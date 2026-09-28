@@ -452,7 +452,7 @@
   .t-cname b { font: 700 5.6rem/1 var(--brush); letter-spacing: .4rem; color: #f9f3e8; white-space: nowrap; text-shadow: .2rem .3rem 0 rgba(0,0,0,.6); }
   .t-cname i { margin-top: .3rem; --sz: 1.5rem; --pad: .35rem .25rem; --rad: .25rem; --r1: .14rem; --r2: .24rem; --drop: 0 .2rem .5rem rgba(0,0,0,.5); }
   .t-cera { margin: .9rem 0 0; font: 700 2rem/1 var(--kai); letter-spacing: .2rem; color: #f2c14e; }
-  .t-cera small { margin-left: .8rem; font: 600 max(12px, 1.2rem)/1 var(--sans); letter-spacing: .14em; color: #c9b995; }
+  .t-cera small { display: inline-block; white-space: nowrap; margin-left: .8rem; font: 600 max(12px, 1.2rem)/1 var(--sans); letter-spacing: .14em; color: #c9b995; }
   .t-cline { margin: 1.3rem 0 0; min-height: 9rem; }
   .t-cline b { display: block; font: 700 2.1rem/1.4 var(--kai); color: var(--paper); }
   .t-cline small { display: block; margin-top: .5rem; font: 600 max(13px, 1.3rem)/1.35 var(--sans); color: #c9b995; }
@@ -471,7 +471,7 @@
   .t-dline b { display: block; font: 700 2.6rem/1.3 var(--brush); color: var(--paper); }
   .t-dline small { display: block; margin-top: .5rem; font: 600 max(13px, 1.3rem)/1.35 var(--sans); color: #c9b995; }
   .t-dcard.lock .t-dline b { color: #e58a70; }
-  .t-dbars { grid-template-columns: 1fr; gap: .8rem; margin-top: 1.4rem; }
+  .t-dcard .t-dbars { grid-template-columns: 1fr; gap: .8rem; margin-top: 1.4rem; }   /* over .s-stats (later, same weight) */
   .t-dcard.lock .t-dbars { opacity: .4; }
 
   /* narrow windows (≤ 4:3): tighter band so the officers keep the right half */
@@ -502,23 +502,23 @@
   .s-mode small { font: 600 max(13px, 1.3rem)/1 var(--sans); letter-spacing: .1em; margin-left: .7rem; color: #f8e4c8; }
 
   /* roster: the focused officer's faction banner over one compact row per officer (select.js; 7 rows fit above the prompts) */
-  .s-roster { position: absolute; left: 7rem; top: 11rem; width: 25rem; display: flex; flex-direction: column; gap: .7rem; }
+  .s-roster { position: absolute; left: 7rem; top: 10.5rem; width: 25rem; display: flex; flex-direction: column; gap: .6rem; }
   .s-fac { display: flex; align-items: center; gap: 1rem; margin-bottom: .5rem; color: var(--paper); }
   .s-fac i { font: 700 3rem/1 var(--brush); font-style: normal; color: #ffe3a0; padding: .7rem .8rem 1.5rem;
     background: linear-gradient(#3a8a60, var(--shu) 60%, #174a30); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%);
     box-shadow: inset 0 .3rem 0 #f2c14e; text-shadow: 0 .15rem .3rem rgba(0,0,0,.6); }
   .s-fac small { font: 600 max(13px, 1.3rem)/1 var(--sans); letter-spacing: .2em; color: var(--dim); }
   /* officer cards: hover = highlight only, click = focus (.on), :active = pressed; .pick replays the focus flash */
-  #select .s-card { position: relative; display: grid; grid-template-columns: 5.6rem 1fr; column-gap: 1.2rem; align-content: center;
-    padding: .5rem 1.4rem .5rem .5rem; color: rgba(244,234,216,.74); background: linear-gradient(90deg, rgba(26,18,14,.9), rgba(18,12,9,.55));
+  #select .s-card { position: relative; display: grid; grid-template-columns: 5rem 1fr; column-gap: 1.2rem; align-content: center;
+    padding: .4rem 1.4rem .4rem .4rem; color: rgba(244,234,216,.74); background: linear-gradient(90deg, rgba(26,18,14,.9), rgba(18,12,9,.55));
     box-shadow: 0 0 0 .1rem rgba(214,170,90,.22), 0 .4rem 1rem rgba(0,0,0,.35);
     transition: transform .22s cubic-bezier(.3,0,.2,1); }   /* only the composited slide eases: ring / colour swap at once, so a
     main-thread hitch never leaves the old card looking lit next to the new one */
   #select .s-card[hidden] { display: none; }   /* not in this visit's roster */
-  .s-card canvas { grid-row: 1 / 3; width: 5.6rem; height: 5.6rem; image-rendering: pixelated;
+  .s-card canvas { grid-row: 1 / 3; width: 5rem; height: 5rem; image-rendering: pixelated;
     background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--acc) 55%, #222), #120c0a 75%);
     box-shadow: 0 0 0 .12rem rgba(214,170,90,.25); filter: saturate(.5) brightness(.72); }
-  .s-card b { align-self: end; font: 700 2.8rem/1 var(--brush); letter-spacing: .2rem; white-space: nowrap; }
+  .s-card b { align-self: end; font: 700 2.6rem/1 var(--brush); letter-spacing: .2rem; white-space: nowrap; }
   .s-card small { font: 600 max(12px, 1.2rem)/1.2 var(--sans); letter-spacing: .06em; padding-top: .3rem; opacity: .9; white-space: nowrap; }
   .s-card > i { position: absolute; right: .7rem; top: 50%; translate: 0 -50%; --sz: 1.2rem; --pad: .3rem .2rem; --rad: .2rem; box-shadow: none; opacity: .35;
     transition: opacity .22s; }
