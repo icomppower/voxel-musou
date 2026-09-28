@@ -191,7 +191,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** Compile every material in the scene (hidden pools included) for this camera, in parallel where the GPU has
  *  KHR_parallel_shader_compile, then let two frames present: the screen's first draws don't stall. */
 async function warm() {
-  screens[state]?.view?.(scene, camRig.camera, camRig.focus, 0);   // a screen's stage (select: every officer's model) exists now
+  screens[state]?.view?.(scene, camRig.camera, camRig.focus, 0);   // a screen's stage (select: the focused officer's model) exists now
   await post.compile(scene, camRig.camera);
   await nextFrame(); await nextFrame();
 }

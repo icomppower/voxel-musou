@@ -7,6 +7,7 @@
 //   story.stats()                          → { kos, time (s), hpMax, maxChain, dmg, rank? } (story:end / result)
 //   story.morale                           ally share of the HUD morale bar 0-1 (undefined in free mode: HUD falls back)
 //   story.target                           {x, z} the HUD objective arrow points at, or null
+//   story.hq                               [x, z] of the foe's 本陣 on the minimap (CH.hq), or null (free: the HUD's default)
 //   story.timer                            seconds left on the objective countdown (obj.timer), or null (HUD)
 //   story.defend                           { name {zh, en}, f (HP fraction), x, z } of the point being defended, or null
 // Story mode plays one chapter (chapters.js: its BEATS, format in that header), run strictly in order — beat k fires
@@ -144,7 +145,7 @@ export function createStory(game) {
     const c = game.crowd, h = game.hero;
     game.timeScale = 1;
     h.atkK = h.defK = 1;
-    Object.assign(st, { target: null, timer: null, defend: null });
+    Object.assign(st, { target: null, timer: null, defend: null, hq: C?.CH.hq || null });
     if (C) for (const id in GATES) setGate(id, false);                 // spawnPoint() opened them all; the script opens each
     st.morale = C ? 0.4 : undefined;
     if (!C) { c.spawnArmy(); c.spawnAllies({ x: h.x, z: h.z - 9, n: 24, cols: 6 }); }
@@ -196,7 +197,7 @@ export function createStory(game) {
       h.z = out;
       if (S.nag && S.t - S.nagT > 600 && !S.q.length && S.t >= S.sayUntil) { S.nagT = S.t; say(S.nag); }
     }
-    if (S.t === S.buffEnd) h.atkK = h.defK = 1;
+    if (S.t >= S.buffEnd) { h.atkK = h.defK = 1; S.buffEnd = Infinity; }
 
     // defend point: every foe soldier on his feet inside r drains 1 hp/s (× the tier's damage)
     const D = S.def;

@@ -442,7 +442,7 @@ export function createHud(root, game, camera) {
         const g = GATES[id].rect;
         if (!GATES[id].open) map.fillRect(X(g[2]), Y(g[3]), (g[2] - g[0]) * s, Math.max(3, (g[3] - g[1]) * s));
       }
-      const hqX = X(4), hqY = Y(208);
+      const hq = game.story.hq || [4, 208], hqX = X(hq[0]), hqY = Y(hq[1]);   // story: CH.hq; free: 夏侯淵's pavilion (A1: MAP.hq)
       map.font = '700 15px "Xingkai SC", "Kaiti SC", "HudBrush", serif'; map.textAlign = 'center';
       if (hqX < 8 || hqX > 192 || hqY < 8 || hqY > 192) {           // enemy HQ beyond the map: pin it to the rim
         const dx = hqX - 100, dy = hqY - 100, k = 90 / Math.max(Math.abs(dx), Math.abs(dy)), px = 100 + dx * k, py = 100 + dy * k, a = Math.atan2(dx, -dy);
