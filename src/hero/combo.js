@@ -76,8 +76,11 @@ function startMove(h, id, inp, game) {
   const [dx, dz, mag] = stickDir(inp, game.cam.yaw);
   if (mag) h.yaw = Math.atan2(dx, dz);
   else {
-    const t = softTarget(h, m, game.crowd, game.diff.windup);
-    if (t >= 0) h.yaw = Math.atan2(game.crowd.x[t] - h.x, game.crowd.z[t] - h.z);
+    const c = game.crowd, t = softTarget(h, m, c, game.diff.windup);
+    // actors lane: a foe hero-model actor (the boss) roughly in front and nearer than that soldier takes the lock
+    const a = game.actors.nearestFoe(h.x, h.z, 5.5, h.yaw, 1.9);
+    if (a && (t < 0 || (a.x - h.x) ** 2 + (a.z - h.z) ** 2 < (c.x[t] - h.x) ** 2 + (c.z[t] - h.z) ** 2)) h.yaw = Math.atan2(a.x - h.x, a.z - h.z);
+    else if (t >= 0) h.yaw = Math.atan2(c.x[t] - h.x, c.z[t] - h.z);
   }
   emit('attack:start', { move: id, x: h.x, y: h.y, z: h.z, yaw: h.yaw, charge: id[0] === 'c' || id === 'jc', tell: m.tell });
 }

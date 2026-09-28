@@ -4,7 +4,7 @@
 //  victims add a body-cluster layer and packed crunch grains) with a post-hitstop "blow-away" release on heavy hits ·
 //  enemy grunts, death cries, body falls · dodge / jump / land / hurt · Musou gauge chime, activation flash + shout,
 //  close-up hush + charge drone swelling into the contact blast, stab flurry, pre-burst inhale, finishing blast + death
-//  chorus · reinforcement horn + army roar · foreground army shouts ·
+//  chorus · reinforcement horn + army roar · foreground army shouts · boss blows (a low thud), poise breaks, 肉包 chime ·
 //  looping distant-battle bed, war drums and a power-chord battle riff that swell with combat
 //  intensity and duck under hits and the Musou.
 // Mix: sfx / voice / bed buses + convolution reverb send → master EQ (matched to the benchmark clips' octave balance) →
@@ -289,6 +289,19 @@ export function createAudio(game) {
     play(pick(B.enemySwing), { gain: 0.3 * att, rate: rnd(0.85, 1.1), pan, send: 0.1, bus: underBus });
     if (e.officer || Math.random() < 0.25) play(pick(B.grunt), { gain: 0.25 * att, rate: rnd(1.05, 1.2), pan, bus: vox, send: 0.15 });
   });
+
+  // ---- actors lane: a boss blow lands (a heavy, low thud under the blast, placed; the bed ducks), a poise break (armour
+  // crash), a 肉包 eaten (the gauge chime, pitched up)
+  on('actor:strike', (e) => {
+    if (!ok()) return;
+    const { pan, att } = place(e.x, e.z);
+    play(pick(B.hitHeavy), { gain: 1.1 * (0.6 + 0.4 * att), rate: rnd(0.6, 0.7), pan: pan * 0.6, send: 0.3, prio: 1 });
+    play(pick(B.land), { gain: 0.9 * (0.6 + 0.4 * att), rate: rnd(0.5, 0.6), pan: pan * 0.6, send: 0.25, prio: 1 });
+    if (e.kind === 'leap') play(pick(B.blow), { gain: 0.7, rate: 0.8, pan, send: 0.3 });
+    duck(0.5, 0.15, 0.25);
+  });
+  on('actor:hit', (e) => { if (ok() && e.stagger) play(pick(B.clank), { gain: 0.8, rate: 0.7, send: 0.2, prio: 1 }); });
+  on('pickup', () => ok() && play(B.ready, { gain: 0.45, rate: 1.35, send: 0.25, prio: 1 }));
 
   // ---- Musou
   on('musou:ready', () => ok() && play(B.ready, { gain: 0.5, send: 0.3, prio: 1 }));

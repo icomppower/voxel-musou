@@ -2,7 +2,8 @@
 // bookkeeping (which clip, normalised time, blend-from) so the rendered pose is a pure function of sim state.
 // Render side: createHeroView builds rig + voxel model + secondary chains and poses them from the sim state.
 // Character-specific data comes from the kit (h.char = CHARS entry, h.kit = h.char.kit; contract: src/chars/index.js),
-// chosen by reset({ char }) at battle start. Story mode may kill the hero (h.dead, 'hero:down'); free mode cannot.
+// chosen by reset({ char }) at battle start. Story mode may kill the hero (h.dead, 'hero:down'; the view topples him onto
+// his back); free mode cannot.
 import * as THREE from 'three';
 import { createRig, sampleClip, blendStep, turnPose, POSE_SIZE, HERO_SCALE } from './rig.js';
 import { moveClip } from './moveset.js';
@@ -30,8 +31,9 @@ export function createHero(game) {
   };
   h.reset();
 
-  /** Called by combat when an enemy strike connects. Any attack move armours against grunts; officers need `armor`. */
-  h.hurt = (dmg, fromX, fromZ, officer) => {
+  /** Called by combat when an enemy strike connects. Any attack move armours against grunts; officers need `armor`.
+   *  iframes: i-frames even when armour takes the blow (a boss's multi-tick attack lands once, src/actors). */
+  h.hurt = (dmg, fromX, fromZ, officer, iframes = 0) => {
     if (h.dead || h.iframes > 0 || h.state === 'musou' || h.state === 'dodge') return false;
     h.hp = Math.max(game.mode === 'story' ? 0 : 1, h.hp - dmg);   // free mode: the hero cannot die (the demo keeps running)
     h.musou = Math.min(h.musouMax, h.musou + dmg * 0.15);
@@ -44,7 +46,7 @@ export function createHero(game) {
       emit('hero:down', { x: h.x, z: h.z });
       return true;
     }
-    if (armored) return true;
+    if (armored) { h.iframes = iframes; return true; }
     h.move = null; setState(h, 'hurt');
     h.vx = dx / l * 3.5; h.vz = dz / l * 3.5;
     h.iframes = 40;
@@ -145,6 +147,10 @@ export function createHeroView(scene, hero) {
       rig.apply(pose, pos.set(hero.x, hero.y + ground(hero.x, hero.z), hero.z), hero.yaw);   // sim y is height above ground
       rig.root.scale.setScalar(HERO_SCALE); rig.root.updateMatrixWorld(true);   // after IK: grow the posed body about the ground point
       applyRoll(rig, hero.anim);                 // dive roll: whole-body pitch about the tucked ball (locomotion-dodge)
+      if (hero.dead) {                           // story defeat: the collapse topples onto his back over 0.6 s
+        const u = Math.min(1, hero.stateT / 36);
+        rig.root.rotation.x = -1.45 * u * u; rig.root.updateMatrixWorld(true);
+      }
       ghosts.update(hero, rig, dt);
       secondary.update(dt);
     },

@@ -6,10 +6,15 @@
 // Character text / portraits come from game.hero.char (src/chars/index.js), refreshed on every 'scenario'. Dialogue,
 // banners and the objective are driven by story events (story:say / story:banner / story:objective, core/events.js).
 // Render-only: reads sim state, never writes it. Animations are timed in sim frames.
+// Hero-model actors (game.actors, src/actors): a boss gets the boss bar (top centre: brush name, red seal, HP + lag + poise,
+// pulsing while enraged; the foe last struck, else the first one standing) and big banners on spawn / break-off / fall
+// (the story banner band); every actor standing gets a floating tag (a boss the officers' ▼▼ + HP, a friend a jade name)
+// and a minimap square (boss gold-rimmed red, friend green).
 // Styles live in index.html (#hud ...). Sizes are rem, and 1rem = 1/72 of the viewport height (10 px at 720p).
 import { Vector3 } from 'three';
 import { on } from '../core/events.js';
 import { ST } from '../crowd/crowd.js';
+import { ACTOR } from '../actors/actors.js';
 import { ground, zoneAt, GATES, MAP, TERRAIN as G, ROUTE, riverZ, walkIn, WALL_Z, GATE_X, FORDS } from '../world/map.js';
 import { CHARS, paintPortrait } from '../chars/index.js';
 
@@ -58,14 +63,16 @@ function minimapLayer() {
 
 export function createHud(root, game, camera) {
   const nOff = game.crowd.N - game.crowd.grunts;                     // officer slots (crowd CROWD.officerSlots)
+  const nAct = 4;                                                    // actors lane: tags for hero-model actors (after the officers')
   root.innerHTML = `
     <div class="h-obj"><i>◆</i><b></b><small></small><span class="go"><i class="ar"></i><em></em></span></div>
     <div class="h-intro"><div class="zh"></div><i class="seal"></i><div class="en"></div>
       <div class="sub"></div>
       <div class="keys"></div></div>
     <div class="h-target"><i class="seal">將</i><b></b><span></span><div class="bar"><em></em><i></i></div><strong>擊破</strong></div>
+    <div class="h-boss"><div class="nm"><b></b><i class="seal"></i><span></span></div><div class="bar bhp"><em></em><i></i></div><div class="bar bpo"><i></i></div></div>
     <div class="h-map"><div class="morale"><i></i><span>蜀</span><span>魏</span></div><canvas width="200" height="200"></canvas><i class="seal">${MAP.name.zh}</i></div>
-    <div class="h-offs">${'<div class="off"><i class="ld"></i><div class="mk">▼▼</div><div class="bd"><b></b><span></span><div class="bar"><em></em><i></i></div></div></div>'.repeat(nOff)}</div>
+    <div class="h-offs">${'<div class="off"><i class="ld"></i><div class="mk">▼▼</div><div class="bd"><b></b><span></span><div class="bar"><em></em><i></i></div></div></div>'.repeat(nOff + nAct)}</div>
     <div class="h-chain"><div class="num"><b class="dig" data-t="0"><span>0</span></b><u></u><u></u><u></u></div><small><em>連擊</em>CHAIN</small></div>
     <div class="h-mile"><b class="dig" data-t="50"><span>50</span></b><i class="seal">擊破</i></div>
     <div class="h-band"><p></p><small></small></div>
@@ -91,6 +98,8 @@ export function createHud(root, game, camera) {
   const mapCv = $('.h-map canvas'), map = mapCv.getContext('2d');
   const offName = (i) => game.crowd.offName[i - game.crowd.grunts] || { zh: '敵將', en: 'OFFICER' };
   const cap = (en) => en.replace(/\b(\w)(\w*)/g, (m, a, b) => a + b.toLowerCase());
+  const boss = $('.h-boss'), bossB = $('.h-boss b'), bossSeal = $('.h-boss .seal'), bossS = $('.h-boss span');
+  const bossI = $('.h-boss .bhp i'), bossE = $('.h-boss .bhp em'), bossP = $('.h-boss .bpo i');
 
   // ---- event-driven state (frames are sim frames), rebuilt on every 'scenario' (game.frame restarts at 0)
   const S = {};
@@ -99,6 +108,7 @@ export function createHud(root, game, camera) {
       lastCombo: 0, shownChain: 0, chainF: -99, chainQ: [], ghostN: 0, shownKo: 0, koF: -99, mile: 0, mileQ: 0, mileF: -99, busyF: -99,
       lagHp: 1, lastF: 0, hurtF: -99, actF: 0, band: null, bandQ: [], dlg: null, waveF: -999, allyF: -999, tgt: -1, tgtF: -999, tgtKoF: -999,
       musouF: -999, musouEnd: -999, waves: [], introCut: 0, obj: null,
+      boss: null, bossLag: 1, bossF: -999,                          // boss bar: the actor shown, its lag chunk, last hit frame
     });
     const ch = game.hero.char;                                        // character text + portraits
     text($('.h-intro .zh'), ch.name.zh); text($('.h-intro .seal'), ch.seal); text($('.h-intro .en'), ch.name.en.toUpperCase());
@@ -162,13 +172,25 @@ export function createHud(root, game, camera) {
   on('musou:start', () => { S.musouF = S.actF = game.frame; S.band = null; S.dlg = null; });
   on('musou:end', () => { S.musouEnd = game.frame; const l = game.hero.char.lines.musouEnd; say(l.zh, l.en); S.dlg.f += 20; });
   on('hero:hurt', () => { S.hurtF = S.actF = game.frame; });
+  // actors lane: hero-model actors — banners in the story band (big for a boss), the boss bar follows the last one struck
+  on('actor:spawn', (e) => {
+    const { zh, en } = e.name;
+    if (e.role === 'boss') { S.boss = game.actors.get(e.key); S.bossLag = 1; banner(e.intro ? e.intro.zh : `<em>${zh}</em> 出陣`, e.intro ? e.intro.en : `${cap(en)} takes the field!`, 200, true, 2); }
+    else if (e.role === 'ally') banner(`<em>${zh}</em> 參戰`, `${cap(en)} joins the battle`, 150, false, 1);
+  });
+  on('actor:hit', (e) => { S.boss = game.actors.get(e.key); S.bossF = S.actF = game.frame; });
+  on('actor:retreat', (e) => {
+    const a = game.actors.get(e.key);
+    if (a && a.isFoe) banner(e.beaten ? `<em>${a.name.zh}</em> 敗走！` : `<em>${a.name.zh}</em> 撤退`, `${cap(a.name.en)} ${e.beaten ? 'is routed!' : 'withdraws'}`, e.beaten ? 220 : 150, e.beaten, e.beaten ? 2 : 1);
+  });
+  on('actor:down', (e) => { const a = game.actors.get(e.key); if (a) banner(`敵將 <em>${a.name.zh}</em> 擊破！`, `${cap(a.name.en)} defeated!`, 220, true, 2); });
   addEventListener('keydown', (e) => { if (e.code === 'KeyH') showKeys = !(showKeys ?? true); });
 
   const set = (el, prop, v) => { if (el.style[prop] !== v) el.style[prop] = v; };
   const text = (el, v) => { v = String(v); if (el.textContent !== v) el.textContent = v; };
   const clamp01 = (v) => Math.max(0, Math.min(1, v));
   const mileOf = (n) => (n < 50 ? (n >= 25 ? 25 : 0) : Math.floor(n / 50) * 50);   // last KO milestone reached
-  const v3 = new Vector3();
+  const v3 = new Vector3(), acts = [];
   reset();
 
   return {
@@ -324,6 +346,27 @@ export function createHud(root, game, camera) {
         target.classList.toggle('ko', tKo);
       }
 
+      // boss bar (actors lane, top centre): the foe actor last struck, else the first one standing; held 2.5 s after he
+      // falls / breaks off. HP (white lag chunk drains 1/3 s after a hit) over the poise bar; pulses red while enraged.
+      // Hidden in the Musou cut, stepped back under the KO milestone (as the tags).
+      let ba = S.boss;
+      if (!ba || ba.state === 'gone' || (ba.dead && f - S.bossF > 150)) {
+        ba = null;
+        for (const a of game.actors.list) if (game.actors.foe(a)) { ba = S.boss = a; S.bossLag = a.hp / a.hpMax; break; }
+      }
+      set(boss, 'opacity', ba && !inMusou ? (mt < 19 ? '0.3' : '1') : '0');
+      if (ba) {
+        text(bossB, ba.name.zh); text(bossSeal, ba.seal); text(bossS, ba.name.en.toUpperCase());
+        const k = clamp01(ba.hp / ba.hpMax);
+        if (f - S.bossF >= 20) S.bossLag = Math.max(k, S.bossLag - 0.006 * df);
+        if (S.bossLag < k) S.bossLag = k;
+        set(bossI, 'transform', `scaleX(${k.toFixed(4)})`); set(bossE, 'transform', `scaleX(${S.bossLag.toFixed(4)})`);
+        set(bossP, 'transform', `scaleX(${clamp01(ba.poise / ba.poiseMax).toFixed(4)})`);
+        const rage = !ba.dead && k < ACTOR.rage;
+        boss.classList.toggle('rage', rage);
+        if (rage) boss.style.setProperty('--p', (0.5 + 0.5 * Math.sin(f * 0.15)).toFixed(2));
+      }
+
       // floating officer tags (DW8): ▼▼ right on the officer's head top, name + red HP bar stacked above it. Every
       // on-screen officer within 45 m gets one, scaled by camera distance (k 0.7-1, so CJK stays ≥ 17 px and Latin ≥ 9 px
       // at 720p) and faded out over the last 5 m. Only the tag body is ever moved — clear of the screen top, the target
@@ -333,7 +376,7 @@ export function createHud(root, game, camera) {
       const rem = H / 72, tags = [];
       let clash = false;
       const mapL = W * 0.976 - 22.5 * rem, mapB = 26 * rem;
-      const zones = [];                                                   // [right edge, bottom] of top-left HUD blocks
+      const zones = [], bossOn = !!ba && !inMusou;                        // [right edge, bottom] of top-left HUD blocks
       if (tg >= 0 && introA < 0.5) zones.push([2.6 * rem + W * 0.36 + 2 * rem, 8.5 * rem]);
       if (dlgA > 0) zones.push([dlg.offsetLeft + dlg.offsetWidth - 4 * rem, dlg.offsetTop + dlg.offsetHeight + rem]);   // minus the fade tail
       const place = (o) => {                                              // keep a body inside the free screen area
@@ -344,21 +387,38 @@ export function createHud(root, game, camera) {
           if (o.bx - o.tw / 2 >= r) continue;                             // body onto the officer: then beside it
           if (bt + o.th > o.ay - o.mkH + rem) o.bx = r + o.tw / 2 + 0.5 * rem; else top = Math.max(top, bt);
         }
+        if (bossOn && o.bx + o.tw / 2 > W * 0.405 && o.bx - o.tw / 2 < W * 0.735) top = Math.max(top, 8 * rem);   // under the boss bar
         o.by = Math.min(H * 0.8, Math.max(o.by, top + o.th));
         return top;
       };
+      acts.length = 0;
+      for (const a of game.actors.list) if (a.state !== 'gone' && a.state !== 'down' && acts.length < nAct) acts.push(a);
       offs.forEach((o, j) => {
-        const i = c.grunts + j;
         o.show = false;
         if (inMusou) return;                                          // r5: the Musou cut is clean (a tag sat on the dragon's face)
-        if (i >= c.N || c.st[i] === ST.OFF || c.st[i] === ST.DEAD) return;
-        const dist = Math.hypot(c.x[i] - h.x, c.z[i] - h.z);
+        // the body: an officer slot, or (tags past nOff) a hero-model actor
+        let x, y, z, hy, hp, hpMax, nm, ally = false;
+        if (j < nOff) {
+          const i = c.grunts + j;
+          if (i >= c.N || c.st[i] === ST.OFF || c.st[i] === ST.DEAD) return;
+          // ▼▼ on the helmet crest (2.3 m standing); a reacting officer bends or falls, so the anchor eases down with him
+          const st = c.st[i];
+          hy = st === ST.HURT || st === ST.KNOCK ? 1.7 : st === ST.AIR ? 1.3 : st === ST.DOWN || st === ST.GETUP ? 1.1 : 2.3;
+          x = c.x[i]; y = c.y[i]; z = c.z[i]; hp = c.hp[i]; hpMax = c.hpMax[i]; nm = offName(i);
+        } else {
+          const a = acts[j - nOff];
+          if (!a) return;
+          hy = (a.state === 'stagger' ? 1.8 : 2.3) * a.scale;
+          x = a.x; y = a.y; z = a.z; hp = a.hp; hpMax = a.hpMax; nm = a.name; ally = !a.isFoe;
+        }
+        o.el.classList.toggle('ally', ally);
+        const inBar = j >= nOff && acts[j - nOff] === ba;
+        o.el.classList.toggle('boss', inBar);                         // the boss bar names him: ▼▼ only (no body to stack)
+        const dist = Math.hypot(x - h.x, z - h.z);
         if (dist >= HUD_TAG_R) return;                               // faded out (alpha < 0.05)
-        // ▼▼ on the helmet crest (2.3 m standing); a reacting officer bends or falls, so the anchor eases down with him
-        const st = c.st[i], hy = st === ST.HURT || st === ST.KNOCK ? 1.7 : st === ST.AIR ? 1.3 : st === ST.DOWN || st === ST.GETUP ? 1.1 : 2.3;
         o.hy = o.hy == null || df > 30 ? hy : o.hy + (hy - o.hy) * (1 - 0.7 ** df);
-        v3.set(c.x[i], c.y[i] + o.hy + ground(c.x[i], c.z[i]), c.z[i]);
-        const nm = offName(i); text(o.nm, nm.zh); text(o.en, nm.en);
+        v3.set(x, y + o.hy + ground(x, z), z);
+        text(o.nm, nm.zh); text(o.en, nm.en);
         const k = Math.max(0.7, Math.min(1, 14 / v3.distanceTo(camera.position)));
         v3.project(camera);
         const sx = (v3.x + 1) / 2, sy = (1 - v3.y) / 2;
@@ -366,8 +426,8 @@ export function createHud(root, game, camera) {
         Object.assign(o, { show: true, k, ax: sx * W, ay: sy * H, mkH: 1.6 * rem * k, tw: 22 * rem * k, th: 5.5 * rem * k, a: clamp01((45 - dist) / 5) * (mt < 19 ? 0.25 : 1) });   // step back under the KO milestone
         o.bx = o.ax; o.by = o.ay - o.mkH;
         if (o.ax - o.tw / 2 < 50 * rem && o.by - o.th < 21 * rem) clash = true;   // natural spot on the intro card
-        place(o); tags.push(o);
-        const hpF = clamp01(c.hp[i] / c.hpMax[i]);
+        place(o); if (!inBar) tags.push(o);
+        const hpF = clamp01(hp / hpMax);
         o.lag = hpF > o.lag ? hpF : Math.max(hpF, o.lag - 0.006 * df);  // white damage chunk drains after the hit
         set(o.bar, 'transform', `scaleX(${hpF.toFixed(4)})`);
         set(o.lagEl, 'transform', `scaleX(${o.lag.toFixed(4)})`);
@@ -470,6 +530,11 @@ export function createHud(root, game, camera) {
         const x = Math.max(5, Math.min(195, X(c.x[i]))), y = Math.max(5, Math.min(195, Y(c.z[i])));
         map.fillStyle = '#1a0d08'; map.fillRect(x - 5, y - 5, 10, 10);
         map.fillStyle = i === tg ? '#ffe08a' : '#ff5a3a'; map.fillRect(x - 3.5, y - 3.5, 7, 7);
+      }
+      for (const a of acts) {                                         // actors lane: boss (gold rim) / friendly officers
+        const x = Math.max(6, Math.min(194, X(a.x))), y = Math.max(6, Math.min(194, Y(a.z)));
+        map.fillStyle = a.isFoe ? '#ffd24a' : '#1a0d08'; map.fillRect(x - 6, y - 6, 12, 12);
+        map.fillStyle = a.isFoe ? '#e0281a' : '#7ef08a'; map.fillRect(x - 4, y - 4, 8, 8);
       }
       const ay = h.yaw;                                              // hero arrow
       const px = (a, r) => 100 - Math.sin(a) * r, py = (a, r) => 100 - Math.cos(a) * r;

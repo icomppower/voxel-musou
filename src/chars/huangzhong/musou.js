@@ -68,11 +68,11 @@ export function createMusou(game) {
     const P = mu.proj, c5 = h.move === 'c5';
     if (c6.seq !== h.moveSeq) {                                   // new charge: predict the shot's own aim rule (projectiles.js)
       c6.seq = h.moveSeq;
-      const s = h.kit.moves[h.move].shots[0], c = game.crowd, R = s.rain;
-      const tg = c5 ? P.lockOn(h.x, h.z, h.yaw, R.reach, 50 * Math.PI / 180, false) : P.lockOn(h.x, h.z, h.yaw, s.range * 0.9, s.home * Math.PI / 180, false);
-      const yaw = tg >= 0 ? Math.atan2(c.x[tg] - h.x, c.z[tg] - h.z) : h.yaw;
-      const dt = tg >= 0 ? Math.hypot(c.x[tg] - h.x, c.z[tg] - h.z) : 0;
-      const d = c5 ? (tg >= 0 ? dt : R.ahead) : tg >= 0 ? Math.max(5, Math.min(12, dt)) : s.groundAim;
+      const s = h.kit.moves[h.move].shots[0], R = s.rain;
+      const tp = P.aimAt(c5 ? P.lockOn(h.x, h.z, h.yaw, R.reach, 50 * Math.PI / 180, false) : P.lockOn(h.x, h.z, h.yaw, s.range * 0.9, s.home * Math.PI / 180, false));
+      const yaw = tp ? Math.atan2(tp.x - h.x, tp.z - h.z) : h.yaw;   // (a soldier or a foe actor: the boss)
+      const dt = tp ? Math.hypot(tp.x - h.x, tp.z - h.z) : 0;
+      const d = c5 ? (tp ? dt : R.ahead) : tp ? Math.max(5, Math.min(12, dt)) : s.groundAim;
       c6.x = h.x + Math.sin(yaw) * d; c6.z = h.z + Math.cos(yaw) * d;
     }
     if (!c5) for (let i = 0; i < P.N; i++) {                      // in flight: where it will hit the ground

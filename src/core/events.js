@@ -9,13 +9,22 @@
 //  attack:start  combo    {move, x,y,z, yaw, charge, tell}              a move begins (charge: C1–C6/jump charge;
 //                                                                        tell: frames until its first active frame)
 //  attack:swing  combat   {move, win, yaw, heavy}                       a hitbox window opens (whoosh)
-//  hit           combat   {i, x,y,z, dx,dz, move, killed, officer, heavy}   one enemy hit
+//  hit           combat   {i, x,y,z, dx,dz, move, killed, officer, heavy}   one enemy hit (a hero-model actor: i -1, actor: key)
 //  hits          combat   {count, x,z, move, hitstop, heavy}            aggregate of one hitbox tick (emitted after its `hit`s);
 //                                                                         hitstop = hero freeze actually applied (scaled by count)
 //  ko            combat   {i, x,y,z, dx,dz, officer}                    enemy KO'd (counted on the killing hit)
 //  enemy:attack  combat   {x,z, officer}                                an enemy strike reaches its active frame
 //  enemy:land    combat   {x,z, bounce}                                 launched soldier touches down (bounce or lands; allies too)
-//  clash         combat   {x,y,z, dx,dz, killed}                        a duel blow lands (Shu ally ↔ Wei grunt)
+//  clash         combat   {x,y,z, dx,dz, killed}                        a duel blow lands (Shu ally ↔ Wei grunt), or an actor's
+//                                                                       blow on a soldier (combat.npcStrike) / an ally's chip on a boss
+//  actor:spawn   actors   {key, role, name, seal, intro}                a hero-model actor takes the field (src/actors/actors.js)
+//  actor:hit     actors   {key, x,y,z, dmg, heavy, stagger, hp}         a hero blow on a foe actor (hp: fraction left; stagger:
+//                                                                       it broke his poise)
+//  actor:strike  actors   {key, kind, x,z, yaw, r, len, w}              a boss attack's first active frame (a leap: on landing);
+//                                                                       kind 'circle' | 'lane' | 'leap', x,z = its origin
+//  actor:down    actors   {key, x,z}                                    a foe actor falls (0 HP)
+//  actor:retreat actors   {key, x,z, beaten}                            an actor runs off the field (beaten: broke off at retreatAt)
+//  pickup        pickups  {x,z, heal}                                   the hero eats a 肉包 (src/actors/pickups.js)
 //  dodge         loco     {x,y,z, dx,dz}
 //  jump          loco     {x,y,z}          land {x,y,z, hard}
 //  footstep      loco     {x,y,z, foot, speed, kick?}                   a foot plants in the run (≥2.5 m/s) / out of a dodge roll

@@ -19,6 +19,7 @@
 //  - Per kit (fx r1): heavy / charge / musou layers take kit.fx (ZY_FX ice by default; Huang Zhong amber-fire), and the
 //    ribbon takes kit.trail: a spear line, or a bow limb along the weapon frame's y restricted to the slash moves, with
 //    the kit's colours and speed gate; bow slashes add a razor air cut / spin ground ring.
+//  - Hero-model actors (src/actors): boss blows (actor:strike, by hitbox shape), poise breaks, 肉包 pickups.
 import * as THREE from 'three';
 import { on } from '../core/events.js';
 import { vrng } from '../core/rng.js';
@@ -1101,6 +1102,34 @@ export function createVfx(scene, game, world) {
     if (K.glint && e.move && (e.move[0] === 'c' || e.move === 'jc')) star(tipNow.x, tipNow.y, tipNow.z, 0.7, 0.2, K.glint, 0);
     // combo-system seam: ground ring that spreads over the charge tell (payload `tell` = frames to the first active)
     if (e.charge) ring(e.x, e.z, 2.4, Math.max(0.2, e.tell / 60), K.ring);
+  });
+
+  // actors lane: hero-model actors (src/actors) — a boss blow lands (shaped by its hitbox: leap = quake + rocks + crack,
+  // sweep = ring + dust skirt, thrust = dust bursts down the lane under a hot streak), a poise break (star + ring), a 肉包
+  // eaten (jade ring, star, motes). Struck actors get the normal contact burst through `hit`.
+  const BOSS_RING = [2.2, 0.55, 0.28];
+  on('actor:strike', (e) => {
+    const R = e.r || 3;
+    if (e.kind === 'leap') {
+      ring(e.x, e.z, R * 1.25, 0.5, BOSS_RING); dustRing(e.x, e.z, 26, 0.6, R * 2, 0.7, 0.6);
+      rocks(e.x, e.z, 18, R * 0.7, 0.14, 0.34, [5, 9], 4); dustColumn(e.x, e.z, 12, 0.6, R * 0.6, 3, [0.8, 1.1], 0.55);
+      crack(e.x, e.z, R * 0.85, CRACK_WARM); wall(e.x, e.z, R * 1.3, 1.8, 0.4, WALL_WARM);
+      lightFlash(e.x, 1, e.z, [1, 0.5, 0.25], 50, 0.3, 12); flash(0.14);
+    } else if (e.kind === 'circle') {
+      ring(e.x, e.z, R * 1.15, 0.4, BOSS_RING); dustRing(e.x, e.z, 18, 0.5, R * 1.7, 0.55, 0.55);
+      rocks(e.x, e.z, 8, R * 0.6, 0.1, 0.24, [3, 6], 3); wall(e.x, e.z, R * 1.2, 1.2, 0.35, WALL_WARM);
+      lightFlash(e.x, 1, e.z, [1, 0.5, 0.25], 30, 0.22);
+    } else {
+      const fx = Math.sin(e.yaw), fz = Math.cos(e.yaw);
+      for (let k = 0; k < 4; k++) { const d = 1 + k * (e.len - 1) / 3.2; dustPuff(e.x + fx * d, e.z + fz * d, 3, 2.2, 0.5, 0.1, 0.55); }
+      beam(STREAK, e.x + fx * 0.6, 1.2, e.z + fz * 0.6, fx, 0, fz, e.len, 1.0, 0.3, [2.4, 0.7, 0.3]);
+      rocks(e.x + fx * e.len * 0.6, e.z + fz * e.len * 0.6, 8, 1.4, 0.1, 0.24, [3, 6], 3);
+    }
+  });
+  on('actor:hit', (e) => { if (e.stagger) { star(e.x, e.y + 0.5, e.z, 2.0, 0.3, [2.4, 2.0, 0.8]); ring(e.x, e.z, 3, 0.4, [2.2, 1.8, 0.8]); flash(0.08); } });
+  on('pickup', (e) => {
+    ring(e.x, e.z, 1.6, 0.45, [0.5, 2.0, 0.7]); star(e.x, 0.8, e.z, 1.1, 0.25, [1.2, 2.4, 1.0]);
+    for (let i = 0; i < 10; i++) sparks.spawn(e.x + vrng.range(-0.5, 0.5), vrng.range(0.1, 0.6), e.z + vrng.range(-0.5, 0.5), 0, vrng.range(1.5, 3), 0, vrng.range(0.5, 0.9), vrng.range(0.03, 0.05), 3, 0.6, 2.2, 0.8);
   });
 
   // Musou payoff layers take the character's colour: Zhao Yun's azure dragon, Huang Zhong's fire volley
