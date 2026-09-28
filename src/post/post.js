@@ -10,6 +10,7 @@
 //                     shoulder (fire stays orange/yellow, white armour keeps its shading), bottom darkening,
 //                     vignette, grain, 2 px ordered dither + palette quantisation (retro).
 // Quality tier: a sustained frame time over budget drops the scene MSAA 4× → 2× → off (?hq pins it).
+// Per-map look: setLook(def.post) overrides any P key (the rest fall back to P) — uniforms only, no recompile.
 // Render-only: reads camera/focus, never touches sim state.
 import * as THREE from 'three';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -240,13 +241,22 @@ export function createPost({ canvas, width, height }) {
   const dof = new FullScreenQuad(mat(DofShader, { tAtmos: { value: atmosRT.texture }, uTexel: { value: new THREE.Vector2() }, ...dofU }));
   const rays = new FullScreenQuad(mat(RaysShader, { tAtmos: { value: atmosRT.texture }, uSunUv: { value: new THREE.Vector2() }, uAspect: { value: new THREE.Vector2(1, 1) }, uTime: { value: 0 } }));
   const sunNdc = new THREE.Vector3(), camFwd = new THREE.Vector3();
-  // Lottes curve constants: tmMidIn → tmMidOut and tmMax → 1
-  const ta = P.tmContrast, ad = ta * P.tmShoulder, mi = P.tmMidIn, mo = P.tmMidOut, hm = P.tmMax, den = (hm ** ad - mi ** ad) * mo;
   const fin = new FullScreenQuad(mat(FinalShader, {
     tSharp: { value: atmosRT.texture }, tDof: { value: dofRT.texture }, tBloom: { value: bloom.renderTargetsHorizontal[0].texture }, tRays: { value: raysRT.texture }, uRayGain: { value: 0 },
-    uRes: { value: new THREE.Vector2(1280, 720) }, uTime: { value: 0 }, uFlash: { value: 0 },
-    uTmB: { value: (hm ** ta * mo - mi ** ta) / den }, uTmC: { value: (hm ** ad * mi ** ta - hm ** ta * mi ** ad * mo) / den }, ...dofU,
+    uRes: { value: new THREE.Vector2(1280, 720) }, uTime: { value: 0 }, uFlash: { value: 0 }, uTmB: { value: 0 }, uTmC: { value: 0 }, ...dofU,
   }));
+  // the current look: P with the map's overrides (setLook); every key is uniform u<K> in each pass
+  let L = P;
+  function setLook(o = {}) {
+    L = { ...P, ...o };
+    for (const k in L) for (const q of [atmos, dof, rays, fin]) { const u = q.material.uniforms[uName(k)]; if (u) Array.isArray(L[k]) ? u.value.set(...L[k]) : (u.value = L[k]); }
+    bloom.strength = L.bloom; bloom.radius = L.bloomRadius; bloom.threshold = L.bloomThreshold;
+    hp.uniforms.smoothWidth.value = L.bloomKnee; hp.uniforms.uCool.value = L.bloomCool;
+    // Lottes curve constants: tmMidIn → tmMidOut and tmMax → 1
+    const ta = L.tmContrast, ad = ta * L.tmShoulder, mi = L.tmMidIn, mo = L.tmMidOut, hm = L.tmMax, den = (hm ** ad - mi ** ad) * mo, g = fin.material.uniforms;
+    g.uTmB.value = (hm ** ta * mo - mi ** ta) / den; g.uTmC.value = (hm ** ad * mi ** ta - hm ** ta * mi ** ad * mo) / den;
+  }
+  setLook();
 
   function setSize(w, h) {
     renderer.setSize(w, h, false);
@@ -282,7 +292,7 @@ export function createPost({ canvas, width, height }) {
       renderer.setRenderTarget(null);
       return p;
     },
-    setSize,
+    setSize, setLook,
     /** focus: world point the camera frames (hero) → DoF focus plane; flash: white screen flash (0..1). */
     render(scene, camera, time, focus, flash) {
       tier(performance.now());
@@ -299,7 +309,7 @@ export function createPost({ canvas, width, height }) {
       const u = dof.material.uniforms;
       u.uFarScale.value = THREE.MathUtils.clamp(7 / f, 1, 3);   // close-ups: stronger background bokeh
       u.uNearScale.value = THREE.MathUtils.clamp(8 / f, 0.25, 1);   // wide/high shots: no tilt-shift miniature at the bottom
-      u.uFocus.value = f; u.uBandN.value = Math.max(P.bandNear, f * 0.22); u.uBandF.value = Math.max(P.bandFar, f * 0.6);
+      u.uFocus.value = f; u.uBandN.value = Math.max(L.bandNear, f * 0.22); u.uBandF.value = Math.max(L.bandFar, f * 0.6);
       renderer.setRenderTarget(dofRT); dof.render(renderer);
 
       bloom.render(renderer, null, dofRT, 1 / 60, false);
@@ -309,7 +319,7 @@ export function createPost({ canvas, width, height }) {
       sunNdc.copy(SUN_DIR).multiplyScalar(800).add(camera.position).project(camera);
       const facing = camera.getWorldDirection(camFwd).dot(SUN_DIR);
       const off = Math.max(Math.abs(sunNdc.x), Math.abs(sunNdc.y));
-      const rg = facing > 0 ? P.rays * THREE.MathUtils.smoothstep(facing, 0.2, 0.6) * (1 - THREE.MathUtils.smoothstep(off, 1.0, 1.8)) : 0;
+      const rg = facing > 0 ? L.rays * THREE.MathUtils.smoothstep(facing, 0.2, 0.6) * (1 - THREE.MathUtils.smoothstep(off, 1.0, 1.8)) : 0;
       g.uRayGain.value = rg;
       if (rg > 0) {
         const ru = rays.material.uniforms;

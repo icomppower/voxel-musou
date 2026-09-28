@@ -20,7 +20,7 @@ import { sampleClip, POSE_SIZE, CH } from '../hero/rig.js';
 import { heroLook } from '../hero/model.js';
 import { createNav, sfx, inkWipe, wiping, afterWipe, stamp, clearStamp, replay } from './menu.js';
 import { ground } from '../world/map.js';
-import { dotTex, scatter, passPoint, standOfficer, poseOfficer } from './stage.js';
+import { dotTex, scatter, stagePoint, standOfficer, poseOfficer } from './stage.js';
 import { DIFFS, LOCK, unlocked, difficulty, setDifficulty } from '../core/difficulty.js';
 
 // brush swash drawn under the focused item (revealed left → right) — one tapered stroke, dry tail
@@ -45,12 +45,11 @@ export const CONTROLS = [   // also the pause menu's table (main.js)
   ['暫停', 'Pause', '<kbd>Esc</kbd> (also frees the mouse)', ''],
 ];
 
-// ---- key-art stage. Frame: origin on the pass road, camera looks +Z (up the valley, into the low sun → rim light).
+// ---- key-art stage. Frame: origin at the HOME map's def.stage.title point (定軍山: up its pass road, north of the idle
+// gameplay hero), camera looks +Z (up the valley, into the low sun → rim light).
 // Cast offsets in metres (x + = world +X = screen-left), face = yaw (0 = facing +Z, π = facing the camera), pose = a held
 // frame of one of the kit's own clips. banner = the officer's surname standard planted behind him.
 export const STAGE = {
-  at: 0.56,                    // stage point: this far up the pass zone (0 = south edge, 1 = north); the lens stays north
-                               // of the origin, where the idle gameplay hero stands before any battle
   eye: 1.05, fov: 32,          // low heroic eye (m above the road), tilted up to the pair
   fitR: 0.975, fitT: 0.05, fitK: 0.97,   // framing (title.js view): right edge, top of the highest point, Zhao Yun's knees
   push: 0.22, pushT: 3.2,      // enter: start this much farther back and push in to the fitted frame over pushT s (the pair
@@ -262,7 +261,7 @@ export function createTitle(el, flow) {
     if (!group) build(scene);
     group.visible = true;
     dt = Math.min(dt || 1 / 60, 0.1); t += dt;
-    const S = STAGE, O = passPoint(S0, S.at);
+    const S = STAGE, O = stagePoint(S0, 'title');
     // narrower than 16:9 the art column shrinks: an officer with `narrow` [x, z] moves toward it (0 at 16:9, all of it at
     // ≤ 4:3), so the pair stays large without the silhouettes merging
     const nk = Math.min(1, Math.max(0, (1.78 - camera.aspect) / 0.45));

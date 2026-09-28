@@ -31,7 +31,7 @@
 // Reaction states (HURT..GETUP) are driven by src/combat; this module owns the rest.
 import { rng, hash01 } from '../core/rng.js';
 import { emit, on } from '../core/events.js';
-import { clampWalk, routeS, routeAt } from '../world/map.js';
+import { clampWalk, routeS, routeAt, MAP } from '../world/map.js';
 
 export const ST = { OFF: 0, IDLE: 1, ADVANCE: 2, GUARD: 3, ATTACK: 4, HURT: 5, KNOCK: 6, AIR: 7, DOWN: 8, GETUP: 9, DEAD: 10 };
 const isReacting = (s) => s >= ST.HURT && s <= ST.GETUP;
@@ -65,7 +65,7 @@ export const CROWD = {
   duelCd: [50, 150], duelHit: 0.55, duelDmg: [[7, 11], [5, 8]],              // blow lands 55 %: ally → Wei 7-11, Wei → ally 5-8
 };
 const DT = 1 / 60;
-const CELL = 1.2, GRID = 400, HALF = GRID * CELL / 2;           // ±240 m: the whole 定軍山 field (world/map.js)
+const CELL = 1.2, GRID = 400, HALF = GRID * CELL / 2;           // ±240 m: every map fits within ±230 m (world/maps)
 const MAXSQ = 64;
 
 export function createCrowd(game, grunts) {
@@ -150,27 +150,28 @@ export function createCrowd(game, grunts) {
     return q;
   }
 
-  /** Squads spread over the field around the origin: the default army layout. One big block waits in front of the
-   *  camera (toward the castle), most other squads stand on that side too, a few flank and close the rear. */
+  /** Squads spread over the field around the free-mode arena centre (the map's spawn.free): the default army layout.
+   *  One big block waits in front of the camera (the way forward), most other squads stand on that side too, a few
+   *  flank and close the rear. */
   c.spawnArmy = () => {
     c.wavesOn = true;
     const slots = freeSlots(false);
-    const fwd = game.cam.yaw;
+    const fwd = game.cam.yaw, { x: ox, z: oz } = MAP.spawn.free;
     let k = 0, n = 0;
     while (k < slots.length) {
       const big = n === 0 && slots.length >= 120;
       const size = Math.min(slots.length - k, big ? rng.int(50, 60) : rng.int(18, 30));
       const a = big ? fwd + rng.range(-0.25, 0.25) : n % 3 === 2 ? fwd + Math.PI + rng.range(-1.4, 1.4) : fwd + rng.range(-1.8, 1.8);
       const d = big ? rng.range(24, 28) : rng.range(11, 34);
-      const sx = Math.sin(a) * d, sz = clampWalk(sx, Math.cos(a) * d, 3)[1];
-      const face = Math.atan2(-sx, -sz);
+      const sx = ox + Math.sin(a) * d, sz = clampWalk(sx, oz + Math.cos(a) * d, 3)[1];
+      const face = Math.atan2(ox - sx, oz - sz);
       makeSquad(slots.slice(k, k + size), sx, sz, face, big ? 10 : Math.max(4, Math.round(Math.sqrt(size * 1.6))), SQ_HOLD);
       k += size; n++;
     }
     for (const i of freeSlots(true)) {
       if (i >= grunts + CROWD.officers) break;
       const a = rng.range(0, Math.PI * 2), d = rng.range(12, 30);
-      place(i, Math.cos(a) * d, Math.sin(a) * d, false);
+      place(i, ox + Math.cos(a) * d, oz + Math.sin(a) * d, false);
       c.offName[i - grunts] = FREE_OFFICERS[(i - grunts) % FREE_OFFICERS.length];
     }
   };
