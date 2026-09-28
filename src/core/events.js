@@ -4,7 +4,8 @@
 // you keep.
 //
 // Catalogue (emitter → payload fields):
-//  scenario      main     {mode, char}                                  after a battle reset
+//  scenario      main     {mode, char, ch, map}                         after a battle reset (ch: chapter id in story,
+//                                                                       undefined in free; map: the battlefield's map id)
 //  flow          main     {state, ctx}                                  flow state entered: title|select|prologue|battle|result
 //  attack:start  combo    {move, x,y,z, yaw, charge, tell}              a move begins (charge: C1–C6/jump charge;
 //                                                                        tell: frames until its first active frame)
@@ -38,8 +39,10 @@
 //                                                                       dur: sim frames
 //  story:banner  story    {html, en, dur, big?}                         system banner (HUD band; html may use <em>; big: slain/boss)
 //  story:objective story  {zh, en}                                      current objective (HUD, top left; empty zh clears it)
-//  story:end     story    {win, stats}                                  battle over → flow goes to the result screen.
-//                                                                       stats: {kos, time (s), hpMax, maxChain, dmg, rank?}
+//  story:set     story    {id}                                          a map set-piece change (world → the map's build().sets[id])
+//  story:end     story    {win, stats, reason}                          battle over → flow goes to the result screen.
+//                                                                       stats: {kos, time (s), hpMax, maxChain, dmg, rank?};
+//                                                                       reason: {zh, en} of a `fail` beat that lost it, or null
 //  arrow:fire    projectiles {x,y,z, yaw, n, heavy, fire, big, sky, move}  a shot leaves the bow (n arrows; big 1 heavy, 2 Musou giant)
 //  arrow:burst   projectiles {x,z, r, fire, heavy, big, count}           a burst arrow explodes (fire arrow, jump shots, Musou giant)
 //  arrow:headshot projectiles {i, x,y,z}                                 an aim-mode arrow takes a standing officer in the head

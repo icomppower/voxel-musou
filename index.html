@@ -173,6 +173,21 @@
   #hud .h-obj .go { margin-left: 1.2rem; font: 700 max(13px, 1.3rem)/1 var(--sans); letter-spacing: .1em; color: var(--gold); vertical-align: .1rem; }
   #hud .h-obj .ar { display: inline-block; width: 0; height: 0; margin: 0 .5rem -.1rem 0; border: .55rem solid transparent;
     border-bottom: 1.1rem solid var(--gold); border-top-width: 0; transform-origin: 50% 60%; filter: drop-shadow(0 0 .2rem #000); }
+  /* objective countdown (story obj.timer, hud.js): a vermilion-edged tag with brush m:ss, pulsing red over the last 10 s */
+  #hud .h-obj .tm { display: inline-block; margin-left: 1.4rem; padding: .2rem .8rem .25rem .6rem; vertical-align: .05rem;
+    background: rgba(12,8,6,.6); box-shadow: inset .25rem 0 0 var(--seal); }
+  #hud .h-obj .tm i { margin-right: .6rem; vertical-align: .35rem; font: 700 1.2rem/1 var(--kai); color: #ffb49a; }
+  #hud .h-obj .tm b { font: 700 2.4rem/1 var(--brush); letter-spacing: .1rem; color: #ffe08a; font-variant-numeric: tabular-nums; }
+  #hud .h-obj .tm.low b { color: #ff5b3c; animation: tmPulse 1s ease-in-out infinite; }
+  @keyframes tmPulse { 50% { opacity: .45; } }
+  /* defend point (story `defend`, hud.js): name + HP bar under the minimap, our teal; vermilion below 30 % */
+  #hud .h-def { right: 2.4%; top: 27.4rem; width: 20rem; opacity: 0; transition: opacity .4s; }
+  #hud .h-def .seal { margin-right: .6rem; padding: .2rem .25rem; vertical-align: .35rem; writing-mode: horizontal-tb; }
+  #hud .h-def b { font: 700 2.2rem/1 var(--brush); color: #c8f4ec; }
+  #hud .h-def span { margin-left: .6rem; font: 600 .95rem/1 var(--sans); letter-spacing: .3em; opacity: .85; }
+  #hud .h-def .bar { height: .9rem; margin-top: .45rem; clip-path: polygon(0 0, 100% 0, calc(100% - .6rem) 100%, 0 100%); }
+  #hud .h-def .bar i { background: linear-gradient(#c8fff6 0 20%, #3fb8b0 40%, #1f5f5c); }
+  #hud .h-def.low .bar i { background: linear-gradient(#ffb49a 0 20%, #e0442e 35%, #8e1c10); }
   #hud .h-target .seal { font-size: 1.6rem; vertical-align: .6rem; margin-right: .6rem; writing-mode: horizontal-tb; padding: .25rem .3rem; }
   #hud .h-target b { font: 700 2.8rem/1 var(--brush); color: #ffe3b0; }
   #hud .h-target span { font: 600 1rem/1 var(--sans); letter-spacing: .35em; margin-left: .8rem; opacity: .85; }
@@ -284,7 +299,7 @@
   /* red seals (HUD, menu, stamp, ink wait, title, select, loading, prologue): vertical brush glyphs on vermilion inside a
      pale ring. Each sets --sz, --pad and, where it differs, --lh, --rad, --glyph (glyph + ring rgb), --r1 / --r2 (ring
      edges), --ra (ring alpha), --drop (outer shadow). :where = no specificity, so every site's own rules win */
-  :where(#hud .seal, #menu .t i, .ui-stamp, .ink-wait i, .t-seal, .t-tag i, .s-card > i, .s-seal, .l-seal, .l-tip span, #prologue .pl-stamp i) {
+  :where(#hud .seal, #menu .t i, .ui-stamp, .ink-wait i, .t-seal, .t-tag i, .t-cname i, .s-card > i, .s-seal, .l-seal, .l-tip span, #prologue .pl-stamp i) {
     --glyph: 251 233 214; font: 700 var(--sz)/var(--lh, 1.05) var(--brush); font-style: normal; writing-mode: vertical-rl; padding: var(--pad);
     border-radius: var(--rad, .3rem); color: rgb(var(--glyph)); background: var(--sealr); text-shadow: none;
     box-shadow: inset 0 0 0 var(--r1) var(--sealr), inset 0 0 0 var(--r2) rgb(var(--glyph) / var(--ra, .75)), var(--drop, 0 0 #0000); }
@@ -401,22 +416,57 @@
      swash focus, a size down) and beside them a card with the focused tier's line and 敵勢 / 敵將 / 傷害 pips (select's
      .s-stats bars). A locked 修羅: dimmed with a 鎖 tag, the card shows its unlock rule. */
   #title:not(.dif) .t-dpanel, #title.dif .t-main { display: none; }
-  .t-dpanel { display: flex; align-items: flex-start; gap: 3rem; margin-top: 4rem; }
-  .t-dpanel .t-menu { margin-top: 0; min-width: 20rem; }
-  #title .t-dif button { padding: .5rem 0 .9rem 4rem; }
-  #title .t-dif b { font-size: 3.4rem; }
-  .t-dif button::before { top: 1.6rem; }
-  .t-dif .swash { bottom: 2.2rem; width: 20rem; }
+  :is(.t-dpanel, .t-cpanel) { display: flex; align-items: flex-start; gap: 3rem; margin-top: 4rem; }
+  :is(.t-dpanel, .t-cpanel) .t-menu { margin-top: 0; min-width: 20rem; }
+  #title :is(.t-dif, .t-chs) button { padding: .5rem 0 .9rem 4rem; }
+  #title :is(.t-dif, .t-chs) b { font-size: 3.4rem; }
+  :is(.t-dif, .t-chs) button::before { top: 1.6rem; }
+  :is(.t-dif, .t-chs) .swash { bottom: 2.2rem; width: 20rem; }
   .t-dif .ui-stamp { left: 12rem; top: -.4rem; }
   .t-lk { display: none; margin-left: .9rem; padding: .25rem .3rem; vertical-align: .7rem; font: 700 1.3rem/1 var(--kai); font-style: normal;
     letter-spacing: 0; text-shadow: none; color: #cdbb9c; border: .12rem solid; border-radius: .25rem; }
-  .t-dif button.lock .t-lk { display: inline-block; }
-  .t-dif button.lock :is(b, small) { opacity: .5; }
-  .t-dcard { width: 27rem; margin-top: .6rem; padding: 1.8rem 2.2rem 2rem; box-sizing: border-box; border-left: .35rem solid var(--sealr);
+  :is(.t-dif, .t-chs) button.lock .t-lk { display: inline-block; }
+  :is(.t-dif, .t-chs) button.lock :is(b, small) { opacity: .5; }
+  :is(.t-dcard, .t-ccard) { width: 27rem; margin-top: .6rem; padding: 1.8rem 2.2rem 2rem; box-sizing: border-box; border-left: .35rem solid var(--sealr);
     background: linear-gradient(135deg, rgba(20,13,10,.92), rgba(14,9,7,.85)); box-shadow: 0 0 0 .1rem rgba(214,170,90,.35), 0 1rem 3rem rgba(0,0,0,.5); }
-  #title.in .t-dcard { animation: fadeIn .4s ease .3s backwards; }
-  .t-dcard h3 { margin: 0 0 1.1rem; font: 700 1.7rem/1 var(--kai); letter-spacing: .3rem; color: #f2c14e; }
-  .t-dcard h3 small { margin-left: .8rem; font: 600 max(12px, 1.2rem)/1 var(--sans); letter-spacing: .14em; color: #c9b995; }
+  #title.in :is(.t-dcard, .t-ccard) { animation: fadeIn .4s ease .3s backwards; }
+  :is(.t-dcard, .t-ccard) h3 { margin: 0 0 1.1rem; font: 700 1.7rem/1 var(--kai); letter-spacing: .3rem; color: #f2c14e; }
+  :is(.t-dcard, .t-ccard) h3 small { margin-left: .8rem; font: 600 max(12px, 1.2rem)/1 var(--sans); letter-spacing: .14em; color: #c9b995; }
+
+  /* chapter / battlefield panel (title.js setCh): in place of the menu once 劇情模式 / 自由演武 is picked, the difficulty
+     panel in its place after a pick. The chapters in the tiers' look (a small 第X章 before each title; 鎖 on a locked one,
+     the best rank as a ringed brush letter after a cleared one) and beside them the era card: number, brush title + red
+     seal, era, the prologue's opening lines (a locked chapter: what to clear first), the chapter's officers, best rank. */
+  #title:not(.chp) .t-cpanel, #title.chp .t-main, #title.dif .t-cpanel { display: none; }
+  .t-chs b em { margin-right: 1rem; vertical-align: .5rem; font: 700 1.9rem/1 var(--kai); font-style: normal; letter-spacing: .1rem; color: #c9b995; }
+  .t-chs button.on b em { color: #f5cf72; }
+  .t-chs .swash { width: 26rem; }
+  .t-rk { display: inline-block; width: 2.6rem; height: 2.6rem; margin-left: .9rem; vertical-align: .5rem; border-radius: 50%; text-align: center;
+    font: 700 1.9rem/2.6rem var(--brush); font-style: normal; letter-spacing: 0; text-shadow: none; color: #f7f1e8; background: rgba(0,0,0,.35);
+    box-shadow: inset 0 0 0 .22rem var(--rc, #b3261e); }
+  .t-rk.rS, .t-cfoot .rS b { --rc: #e2b040; color: #fff0b8; }
+  .t-rk.rB, .t-cfoot .rB b { --rc: #2f8a84; }
+  .t-rk.rC, .t-cfoot .rC b { --rc: #7a6a5a; color: #cdbb9c; }
+  .t-ccard { width: 31rem; }
+  .t-cname { display: flex; align-items: flex-start; gap: 1rem; margin: 0; }
+  .t-cname b { font: 700 5.6rem/1 var(--brush); letter-spacing: .4rem; color: #f9f3e8; white-space: nowrap; text-shadow: .2rem .3rem 0 rgba(0,0,0,.6); }
+  .t-cname i { margin-top: .3rem; --sz: 1.5rem; --pad: .35rem .25rem; --rad: .25rem; --r1: .14rem; --r2: .24rem; --drop: 0 .2rem .5rem rgba(0,0,0,.5); }
+  .t-cera { margin: .9rem 0 0; font: 700 2rem/1 var(--kai); letter-spacing: .2rem; color: #f2c14e; }
+  .t-cera small { margin-left: .8rem; font: 600 max(12px, 1.2rem)/1 var(--sans); letter-spacing: .14em; color: #c9b995; }
+  .t-cline { margin: 1.3rem 0 0; min-height: 9rem; }
+  .t-cline b { display: block; font: 700 2.1rem/1.4 var(--kai); color: var(--paper); }
+  .t-cline small { display: block; margin-top: .5rem; font: 600 max(13px, 1.3rem)/1.35 var(--sans); color: #c9b995; }
+  .t-ccard.lock .t-cline b { color: #e58a70; }
+  .t-ccard.lock :is(.t-cname, .t-cera) { opacity: .45; }
+  .t-cfoot { display: flex; align-items: center; gap: 1.3rem; margin: 1.3rem 0 0; padding-top: 1.2rem; border-top: .1rem solid rgba(214,170,90,.3); }
+  .t-cfoot:empty { display: none; }
+  .t-cfoot span { font: 700 1.5rem/1.2 var(--kai); color: #f2c14e; }
+  .t-cfoot span small { display: block; font: 600 max(11px, 1rem)/1 var(--sans); letter-spacing: .14em; color: #c9b995; }
+  .t-cfoot em { display: flex; align-items: center; gap: .5rem; font: 700 2rem/1 var(--brush); font-style: normal; color: var(--paper); }
+  .t-cfoot canvas { width: 3.2rem; height: 3.2rem; image-rendering: pixelated; background: #1d3a3c; box-shadow: 0 0 0 .12rem rgba(214,170,90,.5); }
+  .t-cfoot strong { display: flex; align-items: center; gap: .7rem; margin-left: auto; font: 700 1.4rem/1.2 var(--kai); color: #c9b995; }
+  .t-cfoot strong b { display: grid; place-items: center; width: 4.4rem; height: 4.4rem; border-radius: 50%; transform: rotate(-8deg);
+    font: 700 3rem/1 var(--brush); color: #f7f1e8; box-shadow: inset 0 0 0 .3rem var(--rc, #b3261e), 0 0 1.2rem rgba(0,0,0,.4); }
   .t-dline { margin: 0; min-height: 7rem; }
   .t-dline b { display: block; font: 700 2.6rem/1.3 var(--brush); color: var(--paper); }
   .t-dline small { display: block; margin-top: .5rem; font: 600 max(13px, 1.3rem)/1.35 var(--sans); color: #c9b995; }
@@ -451,24 +501,26 @@
     box-shadow: inset .3rem 0 0 #f2c14e; }
   .s-mode small { font: 600 max(13px, 1.3rem)/1 var(--sans); letter-spacing: .1em; margin-left: .7rem; color: #f8e4c8; }
 
-  .s-roster { position: absolute; left: 7rem; top: 12rem; width: 27rem; display: flex; flex-direction: column; gap: 1.4rem; }
-  .s-fac { display: flex; align-items: center; gap: 1rem; margin-bottom: .4rem; color: var(--paper); }
+  /* roster: the focused officer's faction banner over one compact row per officer (select.js; 7 rows fit above the prompts) */
+  .s-roster { position: absolute; left: 7rem; top: 11rem; width: 25rem; display: flex; flex-direction: column; gap: .7rem; }
+  .s-fac { display: flex; align-items: center; gap: 1rem; margin-bottom: .5rem; color: var(--paper); }
   .s-fac i { font: 700 3rem/1 var(--brush); font-style: normal; color: #ffe3a0; padding: .7rem .8rem 1.5rem;
     background: linear-gradient(#3a8a60, var(--shu) 60%, #174a30); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%);
     box-shadow: inset 0 .3rem 0 #f2c14e; text-shadow: 0 .15rem .3rem rgba(0,0,0,.6); }
   .s-fac small { font: 600 max(13px, 1.3rem)/1 var(--sans); letter-spacing: .2em; color: var(--dim); }
   /* officer cards: hover = highlight only, click = focus (.on), :active = pressed; .pick replays the focus flash */
-  #select .s-card { position: relative; display: grid; grid-template-columns: 13.5rem 1fr; column-gap: 1.4rem; align-content: center;
-    padding: .8rem 1.6rem .8rem .8rem; color: rgba(244,234,216,.74); background: linear-gradient(90deg, rgba(26,18,14,.9), rgba(18,12,9,.55));
+  #select .s-card { position: relative; display: grid; grid-template-columns: 5.6rem 1fr; column-gap: 1.2rem; align-content: center;
+    padding: .5rem 1.4rem .5rem .5rem; color: rgba(244,234,216,.74); background: linear-gradient(90deg, rgba(26,18,14,.9), rgba(18,12,9,.55));
     box-shadow: 0 0 0 .1rem rgba(214,170,90,.22), 0 .4rem 1rem rgba(0,0,0,.35);
     transition: transform .22s cubic-bezier(.3,0,.2,1); }   /* only the composited slide eases: ring / colour swap at once, so a
     main-thread hitch never leaves the old card looking lit next to the new one */
-  .s-card canvas { grid-row: 1 / 3; width: 13.5rem; height: 13.5rem; image-rendering: pixelated;
+  #select .s-card[hidden] { display: none; }   /* not in this visit's roster */
+  .s-card canvas { grid-row: 1 / 3; width: 5.6rem; height: 5.6rem; image-rendering: pixelated;
     background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--acc) 55%, #222), #120c0a 75%);
     box-shadow: 0 0 0 .12rem rgba(214,170,90,.25); filter: saturate(.5) brightness(.72); }
-  .s-card b { align-self: end; font: 700 3.6rem/1 var(--brush); letter-spacing: .2rem; white-space: nowrap; }
-  .s-card small { font: 600 max(13px, 1.3rem)/1.2 var(--sans); letter-spacing: .06em; padding-top: .5rem; opacity: .9; white-space: nowrap; }
-  .s-card > i { position: absolute; right: .8rem; top: .8rem; --sz: 1.2rem; --pad: .3rem .2rem; --rad: .2rem; box-shadow: none; opacity: .35;
+  .s-card b { align-self: end; font: 700 2.8rem/1 var(--brush); letter-spacing: .2rem; white-space: nowrap; }
+  .s-card small { font: 600 max(12px, 1.2rem)/1.2 var(--sans); letter-spacing: .06em; padding-top: .3rem; opacity: .9; white-space: nowrap; }
+  .s-card > i { position: absolute; right: .7rem; top: 50%; translate: 0 -50%; --sz: 1.2rem; --pad: .3rem .2rem; --rad: .2rem; box-shadow: none; opacity: .35;
     transition: opacity .22s; }
   #select .s-card:hover:not(.on) { color: rgba(244,234,216,.85); transform: translateX(.5rem); background: linear-gradient(90deg, rgba(62,44,28,.94), rgba(30,20,14,.6));
     box-shadow: 0 0 0 .12rem rgba(242,193,78,.55), 0 .4rem 1rem rgba(0,0,0,.35); }

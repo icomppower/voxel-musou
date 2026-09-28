@@ -2,9 +2,11 @@
 // musou gauge (bottom band), KO count with slam pops and 50-KO milestone seal (bottom right / upper third, held back during finishers),
 // chain counter that rolls up hit by hit with DW8 ghost digits (left), officer target bar (top left) and stacked floating
 // officer name/HP/▼▼ tags, square battlefield minimap with morale bar (top right), queued system banners and dialogue,
-// a title/controls intro card, an objective line (top left), and an idle auto-fade.
+// a title/controls intro card, an objective line (top left) with its countdown, a defend-point bar (under the minimap),
+// and an idle auto-fade.
 // Character text / portraits come from game.hero.char (src/chars/index.js), refreshed on every 'scenario'. Dialogue,
-// banners and the objective are driven by story events (story:say / story:banner / story:objective, core/events.js).
+// banners and the objective are driven by story events (story:say / story:banner / story:objective, core/events.js);
+// the countdown and the defend point are read from game.story.timer / game.story.defend every frame.
 // Render-only: reads sim state, never writes it. Animations are timed in sim frames.
 // Styles live in index.html (#hud ...). Sizes are rem, and 1rem = 1/72 of the viewport height (10 px at 720p).
 import { Vector3 } from 'three';
@@ -59,7 +61,8 @@ function minimapLayer() {
 export function createHud(root, game, camera) {
   const nOff = game.crowd.N - game.crowd.grunts;                     // officer slots (crowd CROWD.officerSlots)
   root.innerHTML = `
-    <div class="h-obj"><i>◆</i><b></b><small></small><span class="go"><i class="ar"></i><em></em></span></div>
+    <div class="h-obj"><i>◆</i><b></b><small></small><span class="tm"><i>限時</i><b></b></span><span class="go"><i class="ar"></i><em></em></span></div>
+    <div class="h-def"><i class="seal">守</i><b></b><span></span><div class="bar"><em></em><i></i></div></div>
     <div class="h-intro"><div class="zh"></div><i class="seal"></i><div class="en"></div>
       <div class="sub"></div>
       <div class="keys"></div></div>
@@ -87,6 +90,8 @@ export function createHud(root, game, camera) {
     nm: el.querySelector('b'), en: el.querySelector('span'), bar: el.querySelector('.bar i'), lagEl: el.querySelector('.bar em'), lag: 1 }));
   const obj = $('.h-obj'), objB = $('.h-obj b'), objS = $('.h-obj small'), dlgCv = $('.h-dlg canvas'), dlgN = $('.h-dlg b i'), dlgE = $('.h-dlg b span');
   const objGo = $('.h-obj .go'), objAr = $('.h-obj .ar'), objD = $('.h-obj .go em'), dlgSeal = $('.h-dlg .dseal');
+  const objTm = $('.h-obj .tm'), objTmB = $('.h-obj .tm b'), def = $('.h-def'), defB = $('.h-def b'), defS = $('.h-def span');
+  const defI = $('.h-def .bar i'), defE = $('.h-def .bar em');
   const moraleI = $('.morale i'), mapEl = $('.h-map');
   const mapCv = $('.h-map canvas'), map = mapCv.getContext('2d');
   const offName = (i) => game.crowd.offName[i - game.crowd.grunts] || { zh: '敵將', en: 'OFFICER' };
@@ -98,7 +103,7 @@ export function createHud(root, game, camera) {
     Object.assign(S, {
       lastCombo: 0, shownChain: 0, chainF: -99, chainQ: [], ghostN: 0, shownKo: 0, koF: -99, mile: 0, mileQ: 0, mileF: -99, busyF: -99,
       lagHp: 1, lastF: 0, hurtF: -99, actF: 0, band: null, bandQ: [], dlg: null, waveF: -999, allyF: -999, tgt: -1, tgtF: -999, tgtKoF: -999,
-      musouF: -999, musouEnd: -999, waves: [], introCut: 0, obj: null,
+      musouF: -999, musouEnd: -999, waves: [], introCut: 0, obj: null, defLag: 1,
     });
     const ch = game.hero.char;                                        // character text + portraits
     text($('.h-intro .zh'), ch.name.zh); text($('.h-intro .seal'), ch.seal); text($('.h-intro .en'), ch.name.en.toUpperCase());
@@ -297,6 +302,19 @@ export function createHud(root, game, camera) {
         set(objAr, 'transform', `rotate(${(game.cam.yaw - Math.atan2(goT.x - h.x, goT.z - h.z)).toFixed(3)}rad)`);
         text(objD, `${Math.round(goD)}m`);
       }
+      // objective countdown (story obj.timer): m:ss after the objective, pulsing red over the last 10 s
+      const tl = S.obj ? game.story.timer : null;
+      set(objTm, 'display', tl == null ? 'none' : '');
+      if (tl != null) { text(objTmB, `${Math.floor(tl / 60)}:${String(tl % 60).padStart(2, '0')}`); objTm.classList.toggle('low', tl <= 10); }
+      // defend point (story `defend`): its name + HP bar under the minimap, a white lag chunk draining after a loss
+      const dp = game.story.defend;
+      set(def, 'opacity', dp && !inMusou ? '1' : '0');
+      if (dp) {
+        text(defB, dp.name.zh); text(defS, dp.name.en.toUpperCase());
+        S.defLag = Math.max(dp.f, S.defLag - 0.004 * df);
+        set(defI, 'transform', `scaleX(${dp.f.toFixed(4)})`); set(defE, 'transform', `scaleX(${S.defLag.toFixed(4)})`);
+        def.classList.toggle('low', dp.f < 0.3);
+      }
 
       // musou: vertical calligraphy copy on the right (concept) while the musou runs
       const mf = f - S.musouF, me = f - S.musouEnd;
@@ -332,7 +350,7 @@ export function createHud(root, game, camera) {
       // keeps its spot, the next lifts above it, or slides beside it when there is no room above.
       const rem = H / 72, tags = [];
       let clash = false;
-      const mapL = W * 0.976 - 22.5 * rem, mapB = 26 * rem;
+      const mapL = W * 0.976 - 22.5 * rem, mapB = (dp ? 32 : 26) * rem;   // + the defend bar under the minimap
       const zones = [];                                                   // [right edge, bottom] of top-left HUD blocks
       if (tg >= 0 && introA < 0.5) zones.push([2.6 * rem + W * 0.36 + 2 * rem, 8.5 * rem]);
       if (dlgA > 0) zones.push([dlg.offsetLeft + dlg.offsetWidth - 4 * rem, dlg.offsetTop + dlg.offsetHeight + rem]);   // minus the fade tail
@@ -436,6 +454,10 @@ export function createHud(root, game, camera) {
       } else {
         map.fillStyle = '#d0a040'; map.fillRect(hqX - 4, hqY - 4, 8, 8);
         map.fillStyle = 'rgba(236,214,172,0.9)'; map.fillText('本陣', hqX, hqY - 8);
+      }
+      if (dp) {                                                      // the defend point: a pulsing teal ring
+        map.strokeStyle = `rgba(110,224,200,${(0.6 + 0.4 * Math.sin(f * 0.1)).toFixed(2)})`; map.lineWidth = 2.5;
+        map.beginPath(); map.arc(X(dp.x), Y(dp.z), 7, 0, 7); map.stroke();
       }
       const zn = zoneAt(h.x, h.z);
       if (zn) S.zone = zn;
