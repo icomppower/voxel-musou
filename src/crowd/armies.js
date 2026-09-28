@@ -56,7 +56,7 @@ export const ARMIES = {
       buckle: 0xb8a060, bracer: 0x222a38, tassel: 0x3c7cf0, crest: 0x2a64dc, weapon: 0x2a5ac8, shield: [0x22407e, 0x162a52, 0x1e3668],
     },
     officer: {
-      armor: 0x1c2440, hi: 0x6a82c0, lace: 0x0c1022, plate: 0x2c3a68, rivet: 0xe0b450, cloth: 0x1a2456, pants: 0x1c2032,
+      armor: 0x1c2440, hi: 0x5e74b0, lace: 0x0c1022, plate: 0x2c3a68, rivet: 0xe0b450, cloth: 0x1a2456, pants: 0x1c2032,
       wrap: 0x303a5a, wrapD: 0x1c2032, helm: 0x1c2442, helmHi: 0xdfe4ec, band: 0x2a64dc, belt: 0x5a4420, buckle: 0xf0c860,
       cape: [0x121a44, 0x22388c], plume: 0xe8eef8,
     },
@@ -69,7 +69,7 @@ export const ARMIES = {
   },
   // 董卓軍 (虎牢關, 190): black lacquer lamellar with a violet sheen and bronze rivets, deep purple coats, vivid purple
   // headbands / tassels / crests, purple-and-black pinwheel shields; 董 in gold on a purple standard. Officers: jet
-  // black lacquer, gold trim, purple cape and plume.
+  // black lacquer with violet-lit rows and sleeves, gold trim, purple cape and plume.
   dong: {
     name: { zh: '董卓軍', en: "Dong Zhuo's Army" }, glyph: '董', flag: '#4a2168', ink: '#f0d58a', ui: '#b87ff0', glow: [0, 0, 0, 0.36],
     grunt: {
@@ -78,7 +78,7 @@ export const ARMIES = {
       buckle: 0xc09a48, bracer: 0x261e2c, tassel: 0x9a40d0, crest: 0x8030b0, weapon: 0x6a2490, shield: [0x4a1e62, 0x1c1422, 0x3a1a4e],
     },
     officer: {
-      armor: 0x16121a, hi: 0x5a4e68, lace: 0x08060a, plate: 0x262030, rivet: 0xe0b450, cloth: 0x4a1a64, pants: 0x1c1622,
+      armor: 0x16121a, hi: 0x66508a, lace: 0x08060a, plate: 0x262030, rivet: 0xe0b450, cloth: 0x5a2080, pants: 0x1c1622,
       wrap: 0x3a2e46, wrapD: 0x1c1622, helm: 0x18141c, helmHi: 0xd8b050, band: 0x7a2aa8, belt: 0x5a3a1c, buckle: 0xf0c860,
       cape: [0x2a0e3c, 0x55207a], plume: 0xa040e0,
     },
