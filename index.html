@@ -181,10 +181,10 @@
   #hud .h-obj .tm.low b { color: #ff5b3c; animation: tmPulse 1s ease-in-out infinite; }
   @keyframes tmPulse { 50% { opacity: .45; } }
   /* defend point (story `defend`, hud.js): name + HP bar under the minimap, our teal; vermilion below 30 % */
-  #hud .h-def { right: 2.4%; top: 27.4rem; width: 20rem; opacity: 0; transition: opacity .4s; }
+  #hud .h-def { right: 2.4%; top: 27.4rem; width: 22.5rem; white-space: nowrap; opacity: 0; transition: opacity .4s; }   /* the minimap's width */
   #hud .h-def .seal { margin-right: .6rem; padding: .2rem .25rem; vertical-align: .35rem; writing-mode: horizontal-tb; }
   #hud .h-def b { font: 700 2.2rem/1 var(--brush); color: #c8f4ec; }
-  #hud .h-def span { margin-left: .6rem; font: 600 .95rem/1 var(--sans); letter-spacing: .3em; opacity: .85; }
+  #hud .h-def span { margin-left: .6rem; font: 600 .95rem/1 var(--sans); letter-spacing: .2em; opacity: .85; }
   #hud .h-def .bar { height: .9rem; margin-top: .45rem; clip-path: polygon(0 0, 100% 0, calc(100% - .6rem) 100%, 0 100%); }
   #hud .h-def .bar i { background: linear-gradient(#c8fff6 0 20%, #3fb8b0 40%, #1f5f5c); }
   #hud .h-def.low .bar i { background: linear-gradient(#ffb49a 0 20%, #e0442e 35%, #8e1c10); }
@@ -520,7 +520,7 @@
     box-shadow: 0 0 0 .12rem rgba(214,170,90,.25); filter: saturate(.5) brightness(.72); }
   .s-card b { align-self: end; font: 700 2.6rem/1 var(--brush); letter-spacing: .2rem; white-space: nowrap; }
   .s-card small { font: 600 max(12px, 1.2rem)/1.2 var(--sans); letter-spacing: .06em; padding-top: .3rem; opacity: .9; white-space: nowrap; }
-  .s-card > i { position: absolute; right: .7rem; top: 50%; translate: 0 -50%; --sz: 1.2rem; --pad: .3rem .2rem; --rad: .2rem; box-shadow: none; opacity: .35;
+  .s-card > i { position: absolute; right: .7rem; top: 50%; translate: 0 -50%; white-space: nowrap; --sz: 1.2rem; --pad: .3rem .2rem; --rad: .2rem; box-shadow: none; opacity: .35;
     transition: opacity .22s; }
   #select .s-card:hover:not(.on) { color: rgba(244,234,216,.85); transform: translateX(.5rem); background: linear-gradient(90deg, rgba(62,44,28,.94), rgba(30,20,14,.6));
     box-shadow: 0 0 0 .12rem rgba(242,193,78,.55), 0 .4rem 1rem rgba(0,0,0,.35); }
