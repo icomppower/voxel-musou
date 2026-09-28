@@ -1,5 +1,5 @@
 // Offline-synthesised sound bank (OfflineAudioContext, no downloads). Everything is baked once at boot into AudioBuffers
-// — formant-synth voices (Zhao Yun kiai, enemy grunts / death cries, distant army), layered spear whooshes, slash
+// — formant-synth voices (the officer kiai per kit voice: bakeVoice; enemy grunts / death cries, distant army), layered spear whooshes, slash
 // impacts, armour clanks, bowstring twangs, body falls, Musou stingers, a looping battle bed, a war-drum loop and a power-chord riff loop
 // (bake ≈ 0.9 s at boot; combat sounds are ready after ≈ 0.1 s) — and played back by
 // audio.js with random rate / gain / pan, so 50+ hits per second stay cheap and never repeat back to back.
@@ -159,7 +159,8 @@ function voice(oc, dst, o) {
   out.connect(dst);
 }
 
-// Zhao Yun's kiai lines (seconds from the cue; the vowel peak lands ≈ 50-70 ms in, on the first trail frame)
+// The hero's kiai lines (seconds from the cue; the vowel peak lands ≈ 50-70 ms in, on the first trail frame): Zhao Yun's
+// voice; other officers bake them through their kit voice (bakeVoice)
 const LINES = {
   ha: { f0: [[0, 220], [0.06, 268], [0.14, 250], [0.24, 185]], vow: [[0, 'A'], [0.07, 'a'], [0.24, 'a']],
     amp: [[0, 0], [0.035, 0.08], [0.065, 1], [0.15, 0.75], [0.25, 0]], asp: [[0, 0], [0.012, 0.9], [0.05, 0.5], [0.085, 0]], growl: 0.15 },
@@ -357,7 +358,24 @@ function riff(oc, dst) {
   }));
 }
 
-/** Bake the bank into B progressively (combat sounds first, loops last): B.name = AudioBuffer | AudioBuffer[]. */
+/**
+ * The hero's voice set for a kit voice (kit.voice; {} = Zhao Yun): { pitch: f0 ×, fk: formant ×, growl: added roughness,
+ * gain: level × } → { kiai: {line: AudioBuffer[]}, musouKiai, hurt: [], hup: [] } (audio.js swaps it into the bank at
+ * battle start).
+ */
+export async function bakeVoice({ pitch = 1, fk = 1, growl = 0, gain = 1 } = {}) {
+  const vox = (spec, k) => bake(spec.amp.at(-1)[0] + 0.1, (oc, d) => voice(oc, d, { ...spec, k: k * pitch, fk: (spec.fk || 1) * fk,
+    growl: Math.min(0.85, (spec.growl || 0) + growl) }), 1, 0.9 * gain);
+  const n = (k, f) => Promise.all(Array.from({ length: k }, f));
+  const [lines, hurt, hup, musouKiai] = await Promise.all([
+    Promise.all(Object.entries(LINES).map(async ([id, s]) => [id, await n(2, (_, i) => vox(s, (i ? 1.05 : 0.95) * rnd(0.97, 1.03)))])),
+    n(3, () => vox(HERO_EXTRA.hurt, rnd(0.95, 1.05))), n(2, () => vox(HERO_EXTRA.hup, rnd(0.97, 1.03))), vox(HERO_EXTRA.musou, 1),
+  ]);
+  return { kiai: Object.fromEntries(lines), hurt, hup, musouKiai };
+}
+
+/** Bake the bank into B progressively (combat sounds first, loops last): B.name = AudioBuffer | AudioBuffer[]. The hero
+ *  voice (kiai, musouKiai, hurt, hup) is not in it: audio.js bakes the current officer's (bakeVoice). */
 export async function buildBank(B = {}) {
   const n = (k, f) => Promise.all(Array.from({ length: k }, f));
   const vox = (spec, k) => bake(spec.amp.at(-1)[0] + 0.1, (oc, d) => voice(oc, d, { ...spec, k }));
@@ -377,10 +395,6 @@ export async function buildBank(B = {}) {
     n(4, () => bake(0.32, (oc, d) => twang(oc, d, false), 1, 0)), n(4, () => bake(0.32, (oc, d) => twang(oc, d, true), 1, 0)),
   ]);
   const loops = bakeLoops(B);                                 // the loops only need crowd + clank: render them alongside the rest
-  const kiai = await Promise.all(Object.entries(LINES).flatMap(([id, s]) => [0.95, 1.05].map(async (k) => [id, await vox(s, k * rnd(0.97, 1.03))])));
-  const K = {};
-  for (const [id, b] of kiai) (K[id] = K[id] || []).push(b);
-  B.kiai = K;
   await put(['grunt', 'cry', 'officerCry', 'fall', 'blow', 'enemySwing', 'dodge'], [
     n(8, () => bake(0.3, (oc, d) => grunt(oc, d))),
     n(10, () => bake(0.8, (oc, d) => cry(oc, d))),
@@ -394,11 +408,7 @@ export async function buildBank(B = {}) {
       clank(oc, d, 0.03, rnd(3500, 4500), 0.12, 0.06);
     })),
   ]);
-  const hx = HERO_EXTRA;
-  await put(['hurt', 'hup', 'musouKiai', 'land'], [
-    n(3, () => vox(hx.hurt, rnd(0.95, 1.05))), n(2, () => vox(hx.hup, rnd(0.97, 1.03))), vox(hx.musou, 1),
-    n(2, () => bake(0.4, (oc, d) => { fall(oc, d, true); })),
-  ]);
+  await put(['land'], [n(2, () => bake(0.4, (oc, d) => { fall(oc, d, true); }))]);
   // stingers
   await put(['ready', 'flash', 'boom', 'screams', 'horn', 'roar'], [
     bake(2.2, (oc, d) => {

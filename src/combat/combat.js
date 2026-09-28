@@ -4,6 +4,8 @@
 // hero rewards; reactions() runs on the allies too (crowd indices N … T-1).
 // Emits: attack:swing, hit, hits, ko, enemy:land, clash. Hero moves come from the hero's kit (game.hero.kit.moves); a moveId that
 // is not in it (the Musou passes 'musou') skips the hero-move rules (hitstop scaling, lens cut, heavy blow-away).
+// A window with `proj` (moves.js) never strikes here: it launches flat waves through the kit's Musou sim
+// (game.musou.wave(hit, moveId), src/musou/scripted.js) on its first frame (and every `every` frames), which strike as they fly.
 //
 // Feel targets (bench/notes/hit-feedback.md):
 // - Hitstop is hero-local and scaled: 1 sf per mook tick + 1 per 5 extra victims (cap 4), 6-8 sf on heavy contact.
@@ -289,6 +291,7 @@ export function createCombat(game) {
       if (t < hit.f[0] || t > hit.f[1]) continue;
       if (t === hit.f[0]) emit('attack:swing', { move: h.move, win: w, yaw: h.yaw, heavy: !!hit.heavy });
       const rel = t - hit.f[0];
+      if (hit.proj) { if (hit.every ? rel % hit.every === 0 : !rel) game.musou.wave?.(hit, h.move); continue; }   // waves (header)
       // combo-system r4: a `sweep` window (moves.js) resolves in swing order — the sector grows from the start side over
       // sweepN frames, so victims fall with the blade and the chain ticks +1…+4 per frame instead of all on one frame
       if (hit.sweep) {

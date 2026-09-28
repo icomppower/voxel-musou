@@ -3,7 +3,6 @@
 import * as THREE from 'three';
 import { P, clip, sampleClip, blendPose, spearAbout, CH, POSE_SIZE, HERO_SCALE } from '../rig.js';
 import { LOCO, cadence } from '../locomotion.js';
-import { MOVES } from '../moves.js';
 
 const D2R = Math.PI / 180, TAU = Math.PI * 2;
 const { smoothstep } = THREE.MathUtils;
@@ -151,36 +150,38 @@ export function rollPose(u, out) {
  * Squash & stretch (render-only, from sim anim state): take-off stretches the body along the jump, a landing or the
  * jump-charge impact squashes it flat and springs back with a small overshoot. Returns the vertical scale (1 = none).
  */
-function squash(anim) {
+function squash(anim, JC) {
   let s = 0;
   if (anim.id === 'air' && anim.t < 0.22) return 1 + 0.15 * (1 - anim.t / 0.22);          // rise: vy > 0.56 jumpV
   if (anim.id === 'land') s = 0.17 * (1 - anim.t) * (1 - anim.t) - 0.05 * Math.sin(Math.PI * anim.t);
   else if (anim.id === 'jc') {
-    const u = (anim.t * MOVES.jc.frames - MOVES.jc.landFrame) / 10;
+    const u = (anim.t * JC.frames - JC.landFrame) / 10;
     if (u >= 0 && u < 1) s = 0.22 * (1 - u) * (1 - u) - 0.05 * Math.sin(Math.PI * u);
   }
   return 1 - s;
 }
 
 /** View-side (call right after rig.apply, which must see the root at scale 1): squash & stretch about the feet, and
- *  during a dodge the roll pitch of the posed rig root about ROLL_PIVOT. */
-export function applyRoll(rig, anim) {
-  const R = rig.root, sy = squash(anim);
-  if (sy !== 1) { const sx = 1 / Math.sqrt(sy); R.scale.set(sx * HERO_SCALE, sy * HERO_SCALE, sx * HERO_SCALE); R.updateMatrixWorld(true); }
+ *  during a dodge the roll pitch of the posed rig root about ROLL_PIVOT. K = the hero's kit (its jc timing, body scale). */
+export function applyRoll(rig, anim, K) {
+  const R = rig.root, sy = squash(anim, K.moves.jc), S = K.scale || HERO_SCALE;
+  if (sy !== 1) { const sx = 1 / Math.sqrt(sy); R.scale.set(sx * S, sy * S, sx * S); R.updateMatrixWorld(true); }
   const th = anim.id === 'dodge' ? rollAngle(anim.t) : 0;
   if (th <= 0 || th >= TAU) return;
   const yaw = R.rotation.y, py = ROLL_PIVOT[1], pz = ROLL_PIVOT[2];
   const c = Math.cos(th), s = Math.sin(th);
-  const oy = (py - (py * c - pz * s)) * HERO_SCALE, oz = (pz - (py * s + pz * c)) * HERO_SCALE;
+  const oy = (py - (py * c - pz * s)) * S, oz = (pz - (py * s + pz * c)) * S;
   R.position.x += Math.sin(yaw) * oz; R.position.y += oy; R.position.z += Math.cos(yaw) * oz;
   R.rotation.x = th;
   R.updateMatrixWorld(true);
 }
 
 // ---------------------------------------------------------------- dodge afterimages (render-only)
+// dodge colours (hex): trail ghosts, i-frame shimmer, push-off pop, rim on the pop, rim; a kit's fx.ghost overrides (defkit)
+const GHOST = [0x48d8c8, 0x6fe8dc, 0xc8fff6, 0xa8fff0, 0x52e8d8];
 /**
- * Teal voxel afterimages: for the first frames of the roll the hero gets an additive teal flash (i-frames start), and
- * the roll leaves 3 fading ghosts along its path. Copies share the model's geometry and only draw during a dodge.
+ * Teal voxel afterimages (the kit's fx.ghost colours): for the first frames of the roll the hero gets an additive teal
+ * flash (i-frames start), and the roll leaves 3 fading ghosts along its path. Copies share the model's geometry and only draw during a dodge.
  * Trail ghosts get a depth pre-pass so the overlapping voxel boxes blend as ONE translucent layer (otherwise the
  * stacked inner faces add up to an opaque teal body), and fade out when they sit between the camera and the hero
  * (a roll straight away from the chase camera would otherwise be hidden behind its own ghosts). Reads sim state only.
@@ -226,11 +227,11 @@ export function createDodgeGhosts(scene, model) {
   // around limbs in front of the body) while the armour itself stays readable — the r2 pop turned the hero into a blob
   const rimMat = new THREE.MeshBasicMaterial({ color: 0xe8fffb, side: THREE.BackSide, transparent: true, opacity: 0, depthWrite: false });
   const rim = { mat: rimMat, meshes: src.map((m) => clone(m.geometry, rimMat, 3, 0)) };
-  const IF = LOCO.dodgeIFrames[1], JC = MOVES.jc;
+  const IF = LOCO.dodgeIFrames[1];
   let seq = -1, lastT = 0, next = 1;
   return {
     update(hero, rig, dt) {
-      const live = groups[0], dodging = hero.state === 'dodge';
+      const live = groups[0], dodging = hero.state === 'dodge', JC = hero.kit.moves.jc, G = hero.kit.fx?.ghost || GHOST;
       hx = hero.x; hz = hero.z;
       if (dodging && (hero.dodgeSeq !== seq || hero.stateT < lastT)) { seq = hero.dodgeSeq; lastT = -9; }
       // i-frame read (the benchmark shows none): a white-teal pop on the push-off, then a teal shimmer that holds for
@@ -243,8 +244,8 @@ export function createDodgeGhosts(scene, model) {
         glow = t < 3 ? 0.12 - 0.02 * t : 0.05 + 0.03 * Math.cos(t * Math.PI / 2);
         edge = t < 3 ? 0.9 : 0.5 + 0.2 * Math.cos(t * Math.PI / 2);
         k = 1.05; ke = t < 3 ? 1.09 : 1.07;
-        live.mat.color.setHex(t < 3 ? 0xc8fff6 : 0x6fe8dc);
-        rimMat.color.setHex(t < 3 ? 0xa8fff0 : 0x52e8d8);
+        live.mat.color.setHex(t < 3 ? G[2] : G[1]);
+        rimMat.color.setHex(t < 3 ? G[3] : G[4]);
       } else if (hero.move === 'jc' && hero.moveT >= JC.hang[0] - 3 && hero.moveT < JC.plunge[0] + 2) {
         const t = hero.moveT, ramp = hero.vy > 0.5 ? 0.35 : Math.min(1, (t - JC.hang[0] + 3) / 6), flare = t >= JC.plunge[0] - 4 ? 1.6 : 1;
         glow = ramp * flare * (0.12 + 0.05 * Math.sin(t * 0.7));
@@ -262,6 +263,7 @@ export function createDodgeGhosts(scene, model) {
       show(live, glow > 0); show(rim, edge > 0);
       if (spawn) {
         const g = groups[next]; next = next % (N - 1) + 1;
+        g.mat.color.setHex(G[0]);
         snap(g); g.age = 0; g.peak = hero.stateT < 2 ? 0.5 : 0.38; g.x = hero.x; g.z = hero.z; lastT = hero.stateT;
       }
       for (let i = 1; i < N; i++) {

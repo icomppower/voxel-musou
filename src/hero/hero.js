@@ -131,7 +131,7 @@ export function heroPose(h, out) {
 export function createHeroView(scene, hero) {
   const K = hero.kit, root = new THREE.Group();
   scene.add(root);
-  const rig = createRig();
+  const rig = createRig(K);
   root.add(rig.root);
   const model = K.model(rig);
   const secondary = K.secondary(root, rig, model.material, hero);
@@ -142,9 +142,10 @@ export function createHeroView(scene, hero) {
     update(dt) {
       heroPose(hero, pose);
       rig.root.scale.set(1, 1, 1);               // locomotion-dodge r3: applyRoll's squash & stretch is per frame; IK needs scale 1
-      rig.apply(pose, pos.set(hero.x, hero.y + ground(hero.x, hero.z), hero.z), hero.yaw);   // sim y is height above ground
-      rig.root.scale.setScalar(HERO_SCALE); rig.root.updateMatrixWorld(true);   // after IK: grow the posed body about the ground point
-      applyRoll(rig, hero.anim);                 // dive roll: whole-body pitch about the tucked ball (locomotion-dodge)
+      rig.apply(pose, pos.set(hero.x, hero.y + ground(hero.x, hero.z), hero.z), hero.yaw, hero.y);   // sim y is height above ground
+      rig.root.scale.setScalar(K.scale || HERO_SCALE); rig.root.updateMatrixWorld(true);   // after IK: grow the posed body about the ground point
+      applyRoll(rig, hero.anim, K);              // dive roll: whole-body pitch about the tucked ball (locomotion-dodge)
+      K.view?.(model, hero, dt, rig);            // kit render hook (weapon glow, edge lead, …: src/chars/defkit.js)
       ghosts.update(hero, rig, dt);
       secondary.update(dt);
     },

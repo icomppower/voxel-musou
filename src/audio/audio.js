@@ -1,5 +1,5 @@
 // Battle audio. Plays the offline-baked bank (bank.js) off bus events:
-//  swing whooshes by move shape/weight + Zhao Yun kiai, cued LEAD sim frames before each hitbox window opens (sound leads
+//  swing whooshes by move shape/weight + the officer's kiai (his kit.voice), cued LEAD sim frames before each hitbox window opens (sound leads
 //  the trail) · layered slash impacts on the `hits` frame (click + crack + thwack + thump + crunch, armour clank; 3+
 //  victims add a body-cluster layer and packed crunch grains) with a post-hitstop "blow-away" release on heavy hits ·
 //  enemy grunts, death cries, body falls · dodge / jump / land / hurt · Musou gauge chime, activation flash + shout,
@@ -16,7 +16,7 @@
 // Positional: pan + distance attenuation from the hero, relative to the sim camera yaw. Read-only on the sim; audio
 // randomness is Math.random, never the sim RNG. Starts on the first user gesture.
 import { on } from '../core/events.js';
-import { buildBank, makeIR, noiseBuf } from './bank.js';
+import { buildBank, bakeVoice, makeIR, noiseBuf } from './bank.js';
 
 const rnd = (a, b) => a + (b - a) * Math.random();
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -30,7 +30,7 @@ const kindOf = (w) => (w.heavy ? 'heavy' : w.shape === 'circle' ? 'spin' : w.sha
 const KIAI = {
   n1: [['ha', 'hah']], n2: [['sei', 'hah']], n3: [['toh', 'tah']], n4: [['hyah']], n5: [['sei', 'ha'], ['tah']], n6: [['seiya']],
   c1: [['hyah', 'haa']], c2: [['tah', 'toh']], c3: [['hah'], ['seiya']], c4: [['uora']], c5: [['haa']], c6: [['uora'], ['seiya']],
-  dash: [['hyah']], jatk: [['ha', 'sei']], jc: [['haa']],
+  dash: [['hyah']], jatk: [['ha', 'sei']], ja2: [['hah', 'tah']], ja3: [['seiya']], jc: [['haa']],
 };
 const VOICE_P = 0.8;
 const VOX = 0.72;                 // voice bus: ≈ 6 dB under the sfx stem, so kiai and shouts never mask the impacts
@@ -52,6 +52,18 @@ export function createAudio(game) {
   const lastPick = new Map();
   const B = {};                               // filled progressively by the offline bake (combat sounds first)
   buildBank(B).then(startBed, (e) => console.warn('audio bank', e));
+  // the officer's own voice (kit.voice → bank.js bakeVoice): baked once per distinct voice, swapped into B at battle start
+  const voices = new Map();
+  let voiceKey = null;
+  function useVoice() {
+    const v = game.hero.kit.voice || {}, key = JSON.stringify(v);
+    if (key === voiceKey) return;
+    voiceKey = key;
+    if (!voices.has(key)) voices.set(key, bakeVoice(v));
+    voices.get(key).then((set) => { if (voiceKey === key) Object.assign(B, set); }, (e) => console.warn('audio voice', e));
+  }
+  useVoice();
+  on('scenario', useVoice);
 
   function start() {
     if (ctx) { if (ctx.state !== 'running') ctx.resume(); return; }
