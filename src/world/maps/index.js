@@ -22,7 +22,8 @@
 //             ridges / a palisade line, 20-40 = a canyon)
 //       drop: z — outside the piece and south of this z, a 1 m rim then a fall-away (a plateau's vista edge) instead of rock
 //     The piece with the largest inside value owns a cell (its height wins), so pieces at different heights may only
-//     touch where their heights agree (path ends). ≤ 256 pieces.
+//     touch where their heights agree (path ends). Pieces tile the field: a small plateau nested inside a big rect is
+//     swallowed by it (deeper inside the big one) and stays at the big one's height. ≤ 256 pieces.
 //   carve: [[x0, z0, x1, z1], …]         non-walkable cut-outs (palisade lines, wall stubs)
 //   props: [[x0, z0, x1, z1], …]         solid set-piece footprints: carved AND no rock / boulders grow there
 //   zones: [{ id, name: { zh, en }, x, z, w, d } | { id, name, x, z, r }]   named areas (minimap label, story
