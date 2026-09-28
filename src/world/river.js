@@ -233,9 +233,10 @@ export function createRiver(root) {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   geo.setIndex(idx);
-  // stepping stones marking each crossing (in (along, across) coordinates) + scattered boulders in the pools
+  // stepping stones marking each crossing but a causeway / bridge deck (in (along, across) coordinates) + scattered
+  // boulders in the pools
   const r = makeRng(33), stones = [], hw = WT.hw;
-  for (const [a, b] of WT.fords) for (let x = a + 1.5; x < b - 1; x += r.range(1.6, 2.6)) for (let o = -(hw - 0.5); o <= hw - 0.5; o += r.range(2.2, 3.2)) {
+  for (const [a, b, dep] of WT.fords) if (!(dep < 0)) for (let x = a + 1.5; x < b - 1; x += r.range(1.6, 2.6)) for (let o = -(hw - 0.5); o <= hw - 0.5; o += r.range(2.2, 3.2)) {
     if (r.chance(0.35)) continue;
     stones.push([x + r.range(-0.4, 0.4), mid(x) + o, r.range(0.55, 0.9), r.range(0.3, 0.42)]);   // tops just clear of the water
   }

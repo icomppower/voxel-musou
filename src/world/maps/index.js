@@ -46,7 +46,8 @@
 //           visible strip reaches hw + 3.3). A wide Yangtze: hw 60 with c(z) out beside the lane.
 //       bed: [pool depth, ford depth] m below the plain (default [1.4, 0.45]); y: surface height (default -0.2)
 //       fords: [[a0, a1, depth?], …]   walkable crossings along the axis (stepping stones); a negative depth raises a
-//              causeway / bridge deck that far above the plain in the middle of the crossing (dress a bridge on it)
+//              causeway / bridge deck that far above the plain in the middle of the crossing (no stepping stones; an
+//              earth deck, full height out to hw − 1 across, gone by hw + 3, its sides 4 m ramps: dress a bridge on it)
 //       stones: scattered boulders (default 40; 0 for open water); tint: { deep, shallow, sun: [r, g, b] }
 //
 // ---- render (world.js)
@@ -95,7 +96,7 @@
 //   k.reeds() along the water's banks · k.arrows(area, n) · k.debris(area, n, tries) · k.torchPosts(z0, z1) along the
 //   road · k.aftermath({ fallen: [[x0, x1, z0, z1, n], …], standards: [n, x0, z0, x1, z1], dust: { n, area, wall:
 //   [n, x0, x1, z] } }) — after every formation
-//   k.sites: the world's firelight sites [{ x, y, z, i, d }] (a set piece may push sites or change their i)
+//   k.sites: the world's firelight sites [{ x, y (world height), z, i, d }] (a set piece may push sites or change their i)
 import dingjun from './dingjun.js';
 
 export const MAPS = { dingjun };
