@@ -22,6 +22,7 @@ import { createWorld } from './world/world.js';
 import { createHero, createHeroView } from './hero/hero.js';
 import { createCrowd } from './crowd/crowd.js';
 import { createCrowdView } from './crowd/view.js';
+import { armyPair, FREE_ARMY } from './crowd/armies.js';
 import { createCombat } from './combat/combat.js';
 import { createCamSim, createCameraRig } from './camera/camera.js';
 import { createVfx } from './vfx/vfx.js';
@@ -49,8 +50,9 @@ const scene = new THREE.Scene();
 const world = createWorld(scene);
 
 // ---- sim
-// mode: 'free' | 'story' (set by startBattle); the hero's character / kit: game.hero.char / game.hero.kit
-const game = { frame: 0, hitstop: 0, freeze: 0, mode: 'free', diff: difficulty() };   // diff: core/difficulty.js, fixed per battle
+// mode: 'free' | 'story' (set by startBattle); the hero's character / kit: game.hero.char / game.hero.kit; army: the
+// battle's { foe, ally } (crowd/armies.js, set by startBattle before any view rebuild)
+const game = { frame: 0, hitstop: 0, freeze: 0, mode: 'free', diff: difficulty(), army: armyPair(FREE_ARMY) };   // diff: core/difficulty.js, fixed per battle
 game.cam = createCamSim();
 game.hero = createHero(game);
 game.crowd = createCrowd(game, ENEMIES);
@@ -60,7 +62,7 @@ game.story = createStory(game);
 const input = createInput();
 
 // ---- render side
-const crowdView = createCrowdView(scene, game);
+let crowdView = createCrowdView(scene, game);          // rebuilt when the battle's army pair changes (startBattle)
 const camRig = createCameraRig(game, vw, vh);
 const vfx = createVfx(scene, game, world);
 // kit views (hero model + chains + ghosts, Musou grade/dragon/cut-in): rebuilt when the character's kit changes
@@ -107,6 +109,9 @@ function render(real) {
  *  here: both RNGs reseeded, frame 0), rebuilds the kit views on a character change, lets the story spawn the field. */
 function startBattle({ char = 'zhaoyun', mode = 'free' } = {}) {
   const ch = CHARS[char] || CHARS.zhaoyun, p = spawnPoint(mode), newKit = ch.kit !== game.hero.kit;
+  // C3 armies — A2: armyPair(C ? C.CH.army : FREE_ARMY) once chapters land (story = 定軍山's 魏 / 蜀 until then)
+  const prev = game.army; game.army = armyPair(mode === 'story' ? { foe: 'wei', ally: 'shu' } : FREE_ARMY);
+  if (game.army.foe !== prev.foe || game.army.ally !== prev.ally) { crowdView.dispose(); crowdView = createCrowdView(scene, game); }
   Object.assign(game, { mode, frame: 0, hitstop: 0, freeze: 0, diff: difficulty() });
   lastRenderFrame = 0;
   vrng.seed(7936); rng.seed(1);

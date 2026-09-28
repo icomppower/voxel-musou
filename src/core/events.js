@@ -4,7 +4,8 @@
 // you keep.
 //
 // Catalogue (emitter → payload fields):
-//  scenario      main     {mode, char}                                  after a battle reset
+//  scenario      main     {mode, char}                                  after a battle reset (game.army is set by then:
+//                                                                        vfx KO debris, HUD morale / banners / minimap re-read it)
 //  flow          main     {state, ctx}                                  flow state entered: title|select|prologue|battle|result
 //  attack:start  combo    {move, x,y,z, yaw, charge, tell}              a move begins (charge: C1–C6/jump charge;
 //                                                                        tell: frames until its first active frame)
@@ -15,7 +16,7 @@
 //  ko            combat   {i, x,y,z, dx,dz, officer}                    enemy KO'd (counted on the killing hit)
 //  enemy:attack  combat   {x,z, officer}                                an enemy strike reaches its active frame
 //  enemy:land    combat   {x,z, bounce}                                 launched soldier touches down (bounce or lands; allies too)
-//  clash         combat   {x,y,z, dx,dz, killed}                        a duel blow lands (Shu ally ↔ Wei grunt)
+//  clash         combat   {x,y,z, dx,dz, killed}                        a duel blow lands (ally ↔ foe grunt)
 //  dodge         loco     {x,y,z, dx,dz}
 //  jump          loco     {x,y,z}          land {x,y,z, hard}
 //  footstep      loco     {x,y,z, foot, speed, kick?}                   a foot plants in the run (≥2.5 m/s) / out of a dodge roll
@@ -31,7 +32,7 @@
 //  musou:burst   musou    {count, x,z}                                  finisher: the ring wave starts at Zhao Yun
 //  musou:end     musou    {}
 //  crowd:wave    crowd    {x,z}                                         reinforcements spawned
-//  crowd:allies  crowd    {x,z}                                         a Shu column spawned (runs up the road behind the hero)
+//  crowd:allies  crowd    {x,z}                                         an ally column spawned (runs up the road behind the hero)
 //  story:say     story    {speaker, zh, en, dur, portrait, side}        dialogue line (HUD, top left). speaker: {zh, en} name
 //                                                                       (omitted = the hero); portrait: CHARS id | {seal: glyph}
 //                                                                       (omitted = the hero's); side 'shu' (default) | 'wei';
