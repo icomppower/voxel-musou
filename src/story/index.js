@@ -15,13 +15,14 @@
 // Both modes field live Shu allies (crowd.spawnAllies; columns via crowd.setAllies): story — the van drawn up either side
 // of the road inside the 本陣 gate, holding rank until the hero marches past; free — a block behind him.
 // Morale also moves with the duels (Wei grunts the allies KO'd minus allies lost).
-// Story mode: ch1.js BEATS = a beat list (format: header of ./ch1.js), run strictly in order — beat k fires once
+// Story mode: the chapter fought on the active battlefield (./chapters.js: 定軍山 ch1.js, 赤壁 ch2.js); its BEATS = a
+// beat list (format: header of ./ch1.js), run strictly in order — beat k fires once
 // its trigger holds and beat k-1 has fired; a `limit` keeps the hero from running past the stage he is on (DW8's
 // barred gates), so the script can't be skipped or soft-locked by running ahead, and going back is always free.
 import { emit, on } from '../core/events.js';
-import { zone, setGate, GATES, WALL_Z, GATE_X } from '../world/map.js';
+import { zone, setGate, GATES, WALL_Z, GATE_X, mapId } from '../world/map.js';
 import { CHARS } from '../chars/index.js';
-import { BEATS, OFF, SPK } from './ch1.js';
+import { chapter } from './chapters.js';
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
@@ -57,7 +58,7 @@ export function createStory(game) {
     const dur = Math.max(160, Math.min(270, 100 + zh.length * 8));   // ≈ 2.7-4.5 s: DW8 pace, taunts don't queue behind a briefing
     const e = { zh, en, dur };
     if (line.who === 'ally') { const a = CHARS[S.ally]; Object.assign(e, { speaker: a.name, portrait: a.id, side: 'shu' }); }
-    else if (line.who !== 'hero') { const p = SPK[line.who]; Object.assign(e, { speaker: p.name, portrait: { seal: p.seal }, side: p.side }); }
+    else if (line.who !== 'hero') { const p = S.ch.SPK[line.who]; Object.assign(e, { speaker: p.name, portrait: { seal: p.seal }, side: p.side }); }
     S.q.push(e);
   };
 
@@ -82,7 +83,7 @@ export function createStory(game) {
     if (b.retire) c.retire(h.z - 45);                                  // stage change: idle blocks far behind give their slots back
     for (const q of b.squads || []) { const [x, z] = pos(q.at); c.spawnSquad({ x, z, n: q.n, cols: q.cols, charge: !!q.charge }); }
     for (const k in b.officers || {}) {                                // spawned on the next steps (retried while slots are full)
-      const o = b.officers[k], d = OFF[o.like || k];
+      const o = b.officers[k], d = S.ch.OFF[o.like || k];
       const [x, z] = pos(o.at);
       S.want[k] = { x, z, name: d.name, hp: d.hp, boss: !!d.boss, engaged: !!o.engaged };
       S.off[k] = -1; S.dead[k] = false;
@@ -101,14 +102,14 @@ export function createStory(game) {
   st.reset = ({ mode = 'free', char = 'zhaoyun' } = {}) => {
     Object.assign(S, { mode, char, ally: char === 'huangzhong' ? 'zhaoyun' : 'huangzhong', t: 0, done: false, maxChain: 0,
       downT: -1, dmg: 0, beat: 0, beatT: 0, koBase: 0, off: {}, want: {}, dead: {}, q: [], sayUntil: 0, limit: Infinity, nag: null,
-      nagT: -999, mBase: 0.4, won: -1, go: null });
+      nagT: -999, mBase: 0.4, won: -1, go: null, ch: chapter(mapId()) });
     game.timeScale = 1;
     st.target = null;
     if (mode === 'story') for (const id in GATES) setGate(id, false);   // spawnPoint() opened them all; the script opens each
     st.morale = mode === 'story' ? 0.4 : undefined;
     const c = game.crowd;
     if (mode === 'free') { c.spawnArmy(); c.spawnAllies({ x: 0, z: -9, n: 24, cols: 6 }); }
-    else for (const sx of [-1, 1]) c.spawnAllies({ x: sx * 5.575, z: -121.6, n: 12, cols: 4, hold: true });
+    else for (const a of S.ch.CHAPTER.allies) c.spawnAllies(a);
     c.setAllies(true);
     // story: the first beat spawns the field on step 1 — after main.js's 'scenario' reset of the HUD, so its objective sticks
   };
@@ -128,6 +129,7 @@ export function createStory(game) {
       if (k >= 300) S.end(true);
     } else if (S.downT >= 0) { if (S.t - S.downT >= 120) S.end(false); return; }     // 2 s on the ground, then defeat
 
+    const BEATS = S.ch.BEATS;
     while (S.beat < BEATS.length) {
       const b = BEATS[S.beat];
       if (b.skip && holds(b.skip)) { S.beat++; continue; }

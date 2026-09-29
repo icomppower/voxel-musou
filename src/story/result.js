@@ -1,13 +1,13 @@
 // Battle result (#result), DW8 style: the battlefield stays frozen behind an ink wash; the hero's portrait and a big
 // brush 勝利 / 敗北, then the tallies count up one by one (KOs, max chain, time, damage taken), the rank stamps in (win:
-// S/A/B/C, rules in index.js rank()), and the epilogue (ch1.js EPILOGUE) closes the chapter.
+// S/A/B/C, rules in index.js rank()), and the epilogue (the chapter's EPILOGUE, chapters.js) closes the chapter.
 // Win → 繼續 (title). Defeat → 再戰 (the loading card, then straight back into the battle, no prologue) or 返回 (title).
 // Every exit is an ink wipe (ui lane menu.js). ctx.art (the officer's key-art still, main.js snapArt) fills the right side.
 // Keys (menu.js createNav, + gamepad): Enter / Space press the focused button (← → move between them), Esc → title.
 // The battle's difficulty rides beside VICTORY / DEFEAT; a clear that just opened 修羅 (ctx.unlock) says so under the tallies.
 // ctx in: { win, stats: { kos, time, hpMax, maxChain, dmg, rank? }, mode, char, diff (core/difficulty.js tier), unlock? }.
 import { CHARS, paintPortrait } from '../chars/index.js';
-import { EPILOGUE } from './ch1.js';
+import { chapter } from './chapters.js';
 import { inkWipe, afterWipe, createNav } from '../ui/menu.js';
 
 const mmss = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -31,7 +31,7 @@ export function createResult(el, flow) {
   return {
     enter(c) {
       ctx = c; gone = false;
-      const { win, stats: s } = c, ch = CHARS[c.char] || CHARS.zhaoyun, epi = EPILOGUE[ch.id] || EPILOGUE.huangzhong;
+      const { win, stats: s } = c, ch = CHARS[c.char] || CHARS.zhaoyun, chap = chapter(c.map), epi = chap.EPILOGUE[ch.id] || chap.EPILOGUE.huangzhong;
       const rows = [
         ['擊破數', 'K.O. COUNT', s.kos, (v) => v],
         ['最大連擊', 'MAX CHAIN', s.maxChain, (v) => v],
@@ -42,7 +42,7 @@ export function createResult(el, flow) {
       el.style.setProperty('--art', c.art ? `url("${c.art}")` : 'none');
       el.innerHTML = `<div class="rs">
         <div class="rs-head"><div class="rs-badge"><canvas width="20" height="20"></canvas></div>
-          <div><small>第一章 定軍山 · CHAPTER I · MOUNT DINGJUN</small><h2>${win ? '勝利' : '敗北'}</h2><em>${win ? 'VICTORY' : 'DEFEAT'}</em>${c.diff ? `<span class="rs-dif">${c.diff.zh}<small>${c.diff.en}</small></span>` : ''}</div></div>
+          <div><small>${chap.CHAPTER.head}</small><h2>${win ? '勝利' : '敗北'}</h2><em>${win ? 'VICTORY' : 'DEFEAT'}</em>${c.diff ? `<span class="rs-dif">${c.diff.zh}<small>${c.diff.en}</small></span>` : ''}</div></div>
         <div class="rs-body">
           <table class="rs-stats">${rows.map(([zh, en], i) => `<tr style="--i:${i}"><th>${zh}<small>${en}</small></th><td>0</td></tr>`).join('')}</table>
           ${win && s.rank ? `<div class="rs-rank r${s.rank}"><span>評價<small>RANK</small></span><b>${s.rank}</b></div>` : ''}

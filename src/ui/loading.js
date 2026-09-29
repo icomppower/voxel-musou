@@ -8,6 +8,7 @@
 // entry): the plain background.
 // ctx in: { mode, char, art? }. main.js drives progress(p, zh?, en?) and ready(); nothing here touches the sim.
 import { mapInfo } from '../world/map.js';
+import { chapter } from '../story/chapters.js';
 import { CHARS } from '../chars/index.js';
 import { replay } from './menu.js';
 import { difficulty } from '../core/difficulty.js';
@@ -15,6 +16,7 @@ import { difficulty } from '../core/difficulty.js';
 export const MODE = { story: ['第一章「定軍山」', 'Story · Chapter I · Mount Dingjun'], free: ['自由演武', 'Free battle · endless waves'] };
 /** [zh, en] for a flow ctx: the mode, and for a free battle the battlefield it is fought on (map.js). */
 export const modeLabel = (c) => {
+  if (c.mode === 'story') return chapter(c.map).CHAPTER.label;
   if (c.mode !== 'free') return MODE[c.mode] || MODE.free;
   const m = mapInfo(c.map);
   return [`自由演武「${m.name.zh}」`, `Free battle · ${m.name.en}`];

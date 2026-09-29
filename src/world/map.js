@@ -195,7 +195,8 @@ const CHIBI = {
   // the road the Shu allies follow: landing → shore → the stockade gate → the command tower
   route: [[2, -112], [2, -80], [2, -40], [0, 0], [0, 40], [-1, 70], [-1, 90], [0, 108]],
   gates: {},
-  spawn: () => ({ x: 0, z: 0, yaw: 0, tilt: 0 }),
+  // story (第二章): at the allied landing, facing up the shore; free: the shore arena under the cliffs
+  spawn: (mode) => (mode === 'story' ? { x: 2, z: -100, yaw: 0, tilt: 0 } : { x: 0, z: 0, yaw: 0, tilt: 0 }),
 };
 
 const LAYOUTS = { dingjun: DINGJUN, chibi: CHIBI };
