@@ -1,39 +1,43 @@
-// Terrain of the 定軍山 field (render-only, built once from the map grid in map.js):
+// Terrain of the loaded map (render-only, rebuilt by buildTerrain from the map grid in map.js + def.terrain):
 //  · ground: one textured plane over the whole 2 m grid, heights = ground(), vertex colours for dust drifts,
-//    damp river banks, scorched earth, cliff-foot AO and bare rock on the high ground, a dry-grass map splatted in by
+//    damp water banks, scorched earth, cliff-foot AO and bare rock on the high ground, a dry-grass map splatted in by
 //    grassAt() and flagstone paving drawn in the shader (+ instanced wind-swayed tufts, voxel boulders at the cliff feet);
-//  · cliffs: 2 m voxel rock columns on every node outside the walkable edge, stepped in 1 m courses — tall and sheer
-//    along the pass (DW8's canyon stages), low ridges round the camp plateau, gentle hills round the ford, a drop on
-//    the summit's rim (the vista). Only exposed faces are built, so a camera that slips inside a cliff sees through it;
-//    they receive shadows but cast none (a 30 m wall would black out the whole pass floor under the low sun);
-//  · rubble, pines on the heights, and layered hazy mountains with Dingjun's peak behind the summit.
+//  · cliffs: 2 m voxel rock columns on every node outside the walkable edge, stepped in 1 m courses, climbing toward
+//    the owning piece's `rise` (定軍山: tall and sheer along the pass — DW8's canyon stages —, low ridges round the camp
+//    plateau, gentle hills round the ford) or, for a piece with `drop`, a rim and a fall-away on its near side (the
+//    summit's vista). Only exposed faces are built, so a camera that slips inside a cliff sees through it; they
+//    receive shadows but cast none (a 30 m wall would black out the whole pass floor under a low sun);
+//  · rubble, pines on the heights, and layered hazy mountains round the map (def.terrain.mountains: a named peak).
+// Keep ~30 m between a plateau / full-height cliff and the grid edge: the rock settles onto the outer plain there.
 import * as THREE from 'three';
 import { makeRng, hash01 } from '../core/rng.js';
 import { boxesGeometry, makeBuilder } from '../core/voxel.js';
 import { hazeColor, SUN_DIR, SUN_AZ, NOISE_GLSL } from './sky.js';
-import { TERRAIN as G, PIECE_IDS, ground, noise2, smooth, riverZ, routeDist, onProp, node, SUMMIT_H } from './map.js';
+import { TERRAIN, WATER, waterD, ground, noise2, smooth, routeDist, onProp, node } from './map.js';
 import { wrap } from '../crowd/crowd.js';
 
-const { x0: X0, z0: Z0, step: S, nx: NX, nz: NZ } = G;
+// the map being built (buildTerrain sets these first): grid, def.terrain, water half width (0: dry), column tops
+let G, X0, Z0, S, NX, NZ, T, HW, TOP;
 
 // ---------------------------------------------------------------- cliff heights
-// Rise (m) toward which the rock climbs away from the walkable edge, per owning piece (× 0.65-1.35 ridge noise).
-const RISE = { honjin: 5, ford: 9, mouth: 22, basin: 26, climb: 34, plaza: 3, gateway: 3, court: 3.5, ramp: 16, summit: 40 };
 const COL = -1.4;                    // a node grows a column this far outside the walk edge (its face then stands ≥ 0.4 m out)
-/** Column top per grid node (m, 1 m courses), NaN where there is walkable ground / river. */
-const TOP = new Float32Array(NX * NZ).fill(NaN);
-for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
-  const k = i + j * NX, f = G.in[k];
-  if (f > COL) continue;
-  const x = X0 + i * S, z = Z0 + j * S, h = G.h[k], d = -f, id = PIECE_IDS[G.own[k]];
-  if (id === 'ford' && Math.abs(z - riverZ(x)) < 7.5) continue;              // the river cuts through the banks
-  if (onProp(x, z)) continue;                                                  // a set piece's footprint (pavilion terrace, table)
-  const n = noise2(x * 0.045, z * 0.045, 71);
-  let t;
-  if (id === 'summit' && z < 212) t = d < 3 ? SUMMIT_H + 1 : SUMMIT_H - Math.min(SUMMIT_H + 1, (d - 3) * (1.1 + n));   // rim, then the drop
-  else t = h + Math.max(1.2, RISE[id] * (0.65 + 0.7 * n) * (1 - Math.exp(-d / 7))) + (hash01(i, j, 5) - 0.5) * 1.2;
-  t *= smooth(0, 30, Math.min(i, j, NX - 1 - i, NZ - 1 - j) * S);           // settle onto the outer plain at the grid rim
-  TOP[k] = Math.round(t);
+/** Column top per grid node (m, 1 m courses), NaN where there is walkable ground / water. The rock climbs away from
+ *  the walkable edge toward the owning piece's `rise` (× 0.65-1.35 ridge noise). */
+function columns(pieces) {
+  TOP = new Float32Array(NX * NZ).fill(NaN);
+  for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
+    const k = i + j * NX, f = G.in[k];
+    if (f > COL) continue;
+    const x = X0 + i * S, z = Z0 + j * S, h = G.h[k], d = -f, P = pieces[G.own[k]];
+    if (waterD(x, z) < HW + 3) continue;                                       // the water cuts through the banks
+    if (onProp(x, z)) continue;                                                  // a set piece's footprint (pavilion terrace, table)
+    const n = noise2(x * 0.045, z * 0.045, 71);
+    let t;
+    if (z < P.drop) t = d < 3 ? P.h + 1 : P.h - Math.min(P.h + 1, (d - 3) * (1.1 + n));   // rim, then the drop
+    else t = h + Math.max(1.2, (P.rise ?? 8) * (0.65 + 0.7 * n) * (1 - Math.exp(-d / 7))) + (hash01(i, j, 5) - 0.5) * 1.2;
+    t *= smooth(0, 30, Math.min(i, j, NX - 1 - i, NZ - 1 - j) * S);           // settle onto the outer plain at the grid rim
+    TOP[k] = Math.round(t);
+  }
 }
 /** Surface height at (x, z) including rock columns (props on the heights: watchtowers, pines, troops). */
 export function topAt(x, z) {
@@ -46,12 +50,10 @@ export function topAt(x, z) {
 /** Paving mask without the road itself (plazas, noise, broken patches), unclamped; the ford is a dirt track. The ground
  *  shader adds the road term from the interpolated route distance, so the road edge is exact on the 2 m grid. */
 function paveBase(x, z) {
-  if (Math.abs(z - riverZ(x)) < 9) return -9;
+  if (waterD(x, z) < HW + 4.5) return -9;
   // noise paving only grows out of the road (bulges joined to it): far from the route it left orphan flagstone islands
   let m = noise2(x * 0.07, z * 0.07, 5) * 1.3 - 0.62 - 1.2 * smooth(4, 9, routeDist(x, z));
-  if (z > 76 && z < 140 && x > -30 && x < 5) m += 0.55;                      // plaza + courtyard: worn paving
-  if (Math.hypot(x - 2, z - 194) < 13) m += 0.7;                             // summit parade ground
-  if (Math.hypot(x, z + 140) < 11) m += 0.6;                                 // 本陣 square
+  if (T.pave) m += T.pave(x, z);                                             // squares, courtyards, parade grounds
   const hole = noise2(x * 0.15, z * 0.15, 8);                                // broken patches of bare dust
   return m - Math.max(0, Math.min(1, (hole - 0.5) / 0.14)) * 1.0;
 }
@@ -105,16 +107,17 @@ function groundTexture() {
 
 /**
  * Dry golden-olive grass mask 0..1 on the open ground: gone on the road and the paving, trampled into patches where
- * the fight runs, lush on the river banks, bare in the Wei camp's plaza/courtyard. Also seeds the grass tufts.
+ * the fight runs, lush on the water's banks, bare where def.terrain.bare says (定軍山: the Wei camp). Also seeds the
+ * grass tufts.
  */
 function grassAt(x, z) {
   const inside = G.in[node(x, z)] ?? -9;
   let g = smooth(0.2, 0.52, noise2(x * 0.05 + 13, z * 0.05 - 7, 41));
   g *= smooth(2.5, 7.5, routeDist(x, z)) * (1 - paveMask(x, z));
   if (inside > 5) g *= 0.5 + 0.5 * smooth(0.42, 0.7, noise2(x * 0.11, z * 0.11, 43));   // trampled where the fight runs
-  const dz = Math.abs(z - riverZ(x));
-  g = Math.max(g, (1 - smooth(8, 15, dz)) * smooth(4.4, 6.2, dz));              // lush banks, not in the water
-  if (z > 74 && z < 142 && x > -44 && x < 7) g *= 0.15;                         // the Wei camp: beaten earth
+  const dz = waterD(x, z);
+  g = Math.max(g, (1 - smooth(HW + 3.5, HW + 10.5, dz)) * smooth(HW - 0.1, HW + 1.7, dz));   // lush banks, not in the water
+  if (T.bare?.(x, z)) g *= 0.15;                                                // beaten earth (camps)
   return g;
 }
 
@@ -147,6 +150,7 @@ function grassTexture() {
  *  Shade, not geometry: the paving can never read as loose tiles, and costs no triangles. */
 function splatMaterial(map, grass) {
   const m = new THREE.MeshStandardMaterial({ map, vertexColors: true, roughness: 0.96 });
+  m.userData.tex = [grass];                                                    // held only by the shader closure: world dispose
   m.onBeforeCompile = (sh) => {
     sh.uniforms.tGrass = { value: grass };
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aGrass; attribute vec2 aPave; varying float vGrass; varying vec2 vGw; varying vec2 vPave;')
@@ -229,11 +233,11 @@ function groundMesh(scorch) {
     let sc = 0;
     for (const [sx, sz, ss] of scorch) sc = Math.max(sc, Math.exp(-((x - sx) ** 2 + (z - sz) ** 2) / (9 * ss * ss)));
     kk *= 1 - 0.55 * sc;                                                       // scorched earth
-    const wet = 1 - smooth(5, 11, Math.abs(z - riverZ(x)));                   // damp dark banks
+    const wet = 1 - smooth(HW + 0.5, HW + 6.5, waterD(x, z));                // damp dark banks
     kk *= 1 - 0.3 * wet;
     kk *= 1 - 0.1 * (1 - smooth(0, 4.5, routeDist(x, z)));                    // the road: worn darker by the march
     kk *= 1 - 0.09 * Math.min(4, nearRock(i, j));                              // contact shadow at the cliff foot
-    const rock = smooth(1, 6, h - 3 - z / 18) * (1 - smooth(-6, -1, G.in[k]) * 0.4);   // high ground: bare, cooler rock dust
+    const rock = smooth(1, 6, T.rock ? T.rock(h, x, z) : h) * (1 - smooth(-6, -1, G.in[k]) * 0.4);   // high ground: bare, cooler rock dust
     col[v * 3] = kk * (1.03 - 0.1 * wet - 0.08 * rock); col[v * 3 + 1] = kk * (1 - 0.02 * wet); col[v * 3 + 2] = kk * (0.94 + 0.04 * wet + 0.08 * rock);
     gr[v] = grassAt(x, z) * (1 - sc) * (1 - 0.6 * rock);
     pv[v * 2] = paveBase(x, z) - 1.5 * sc; pv[v * 2 + 1] = Math.min(12, routeDist(x, z));   // scorched earth: broken paving
@@ -251,7 +255,7 @@ function groundMesh(scorch) {
   const og = new THREE.PlaneGeometry(2400, 2400, 8, 8); og.rotateX(-Math.PI / 2);
   const t2 = grass.clone(); t2.needsUpdate = true; t2.repeat.set(2400 / 8, 2400 / 8);
   const outer = new THREE.Mesh(og, new THREE.MeshStandardMaterial({ map: t2, color: 0xc9bfa0, roughness: 0.97 }));
-  outer.position.set(0, -0.6, 30);                                             // under the grid (its rim settles to 0)
+  outer.position.set((G.x0 + G.x1) / 2, -0.6, (G.z0 + G.z1) / 2);              // under the grid (its rim settles to 0)
   out.add(outer);
   return out;
 }
@@ -306,9 +310,9 @@ function tufts() {
   };
   const r = makeRng(404), spots = [];
   for (let n = 0; n < 80000 && spots.length < 9000; n++) {
-    const x = r.range(X0 + 4, X0 + (NX - 1) * S - 4), z = r.range(-160, 222);
+    const x = r.range(X0 + 4, X0 + (NX - 1) * S - 4), z = r.range(G.z0 + 18, G.z1 - 16);
     const k = node(x, z);
-    if (TOP[k] > G.h[k] || G.in[k] < -1.2 || Math.abs(z - riverZ(x)) < 4.8) continue;   // not in the rock or the water
+    if (TOP[k] > G.h[k] || G.in[k] < -1.2 || waterD(x, z) < HW + 0.3) continue;   // not in the rock or the water
     const gm = grassAt(x, z);
     if (r.next() > (gm - 0.35) * 2.2) continue;
     spots.push([x, z, gm]);
@@ -335,7 +339,7 @@ function boulders() {
     const k = i + j * NX, f = G.in[k];
     if (f > -0.4 || f < -3.5 || !Number.isNaN(TOP[k]) || hash01(i, j, 91) > 0.2 || onProp(X0 + i * S, Z0 + j * S, 2)) continue;
     const x = X0 + i * S + r.range(-0.6, 0.6), z = Z0 + j * S + r.range(-0.6, 0.6);
-    if (Math.abs(z - riverZ(x)) < 6) continue;
+    if (waterD(x, z) < HW + 1.5) continue;
     list.push([x, z, r.range(0.5, 1.2) * (hash01(i, j, 92) < 0.15 ? 1.7 : 1)]);
   }
   const B = (x, y, z, w, h, d, v) => ({ s: [w, h, d], p: [x, y + h / 2, z], c: new THREE.Color(v, v, v).getHex() });
@@ -407,7 +411,8 @@ export function voxelGrain(mat, cell, amt) {
 function cliffs() {
   const vb = makeBuilder();
   // tops a shade darker than the valley dust (the low sun lights them flat-on: a paler top reads as snow)
-  const c = new THREE.Color(), ROCK = new THREE.Color(0x735a50), DARK = new THREE.Color(0x4a3a37), TOPC = new THREE.Color(0x7d6656), MOSS = new THREE.Color(0x5a5a3c), GRASSY = new THREE.Color(0x6f6c3e);
+  const P = { rock: 0x735a50, dark: 0x4a3a37, top: 0x7d6656, moss: 0x5a5a3c, grassy: 0x6f6c3e, ...T.cliff };   // strata palette
+  const c = new THREE.Color(), ROCK = new THREE.Color(P.rock), DARK = new THREE.Color(P.dark), TOPC = new THREE.Color(P.top), MOSS = new THREE.Color(P.moss), GRASSY = new THREE.Color(P.grassy);
   // ao: [bottom, top] brightness of a face quad (vertex order: bottom pair, top pair) — baked voxel AO: dark at the foot
   // of every face, a sunlit lip on the top course
   const quad = (a, b, cc, d, n, ao = [1, 1]) => vb.quad([a, b, cc, d], n, c.r, c.g, c.b, [ao[0], ao[0], ao[1], ao[1]]);
@@ -446,12 +451,13 @@ function cliffs() {
   return m;
 }
 
-/** Voxel pines on the rock tops (instanced trunk + three tiers): Dingjun's wooded shoulders, thicker toward the summit. */
+/** Voxel pines on the rock tops (instanced trunk + three tiers): wooded shoulders, thicker over def.terrain.pines
+ *  [z0, z1] (定軍山: toward the summit). */
 function pines() {
-  const spots = [];
+  const spots = [], [pz0, pz1] = T.pines || [G.z0, G.z1];
   for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
     const k = i + j * NX, t = TOP[k];
-    if (Number.isNaN(t) || t - G.h[k] < 5 || hash01(i, j, 23) > 0.07 + 0.05 * smooth(60, 200, Z0 + j * S)) continue;
+    if (Number.isNaN(t) || t - G.h[k] < 5 || hash01(i, j, 23) > 0.07 + 0.05 * smooth(pz0, pz1, Z0 + j * S)) continue;
     spots.push([X0 + i * S + (hash01(i, j, 24) - 0.5) * 1.2, t, Z0 + j * S + (hash01(i, j, 25) - 0.5) * 1.2, 0.8 + hash01(i, j, 26) * 0.7]);
   }
   const g = new THREE.BoxGeometry(1, 1, 1);
@@ -474,14 +480,15 @@ function pines() {
 }
 
 // ---------------------------------------------------------------- rubble
-/** Clusters of loose voxel rubble over the walkable field: broken paving, masonry chunks and charred planks, < 0.4 m. */
+/** Clusters of loose voxel rubble over the walkable field (def.terrain.rubble: the area [x0, z0, x1, z1] they are
+ *  scattered over): broken paving, masonry chunks and charred planks, < 0.4 m. */
 function rubble() {
-  const r = makeRng(17), list = [];
+  const r = makeRng(17), list = [], [ax0, az0, ax1, az1] = T.rubble || [G.x0 + 20, G.z0 + 20, G.x1 - 20, G.z1 - 20];
   const COLS = [0x6a5e56, 0x5e544e, 0x74685e, 0x564a44, 0x6e6660, 0x3a2a22];
   for (let k = 0; k < 420 && list.length < 2400; k++) {
-    const cx = r.range(-60, 60), cz = r.range(-156, 215);
+    const cx = r.range(ax0, ax1), cz = r.range(az0, az1);
     const f = G.in[node(cx, cz)];
-    if (f < 0.5 || routeDist(cx, cz) < 3 || Math.abs(cz - riverZ(cx)) < 6) continue;   // on the field, off the road and the water
+    if (f < 0.5 || routeDist(cx, cz) < 3 || waterD(cx, cz) < HW + 1.5) continue;   // on the field, off the road and the water
     const n = r.int(3, 10), spread = r.range(0.6, 1.6), gy = ground(cx, cz);
     for (let i = 0; i < n; i++) {
       const sz = r.range(0.08, 0.26) * (i === 0 ? 1.25 : 1), wood = r.chance(0.12);                 // broken setts and chips, not blocks
@@ -512,16 +519,17 @@ function ringNoise(n, seed) {
 }
 
 /**
- * Three rings of jagged mountains round the middle of the map (0, MZ), faceted (flat triangles) with baked light and
+ * Three rings of jagged mountains round the middle of the grid (MX, MZ), faceted (flat triangles) with baked light and
  * haze so they need no fog and blend into the sky at their base. Peaks stay low in angle (≈ 2-7°) so the gameplay
- * camera still sees sky above them — except Dingjun's own peak on the first ring, straight up the valley (bearing
- * PEAK_A, just right of the sunset saddle): the dark shoulder every zone looks toward, the summit's backdrop.
+ * camera still sees sky above them — except a named peak on the first ring (def.terrain.mountains { peakA: bearing,
+ * peak: m }; 定軍山: Dingjun's own, straight up the valley just right of the sunset saddle — the dark shoulder every
+ * zone looks toward, the summit's backdrop). A saddle always opens where the sun sets (SUN_AZ).
  * Blue-leaning mauve: the post grade warms them onto the concept's #7e7384–#898197.
  */
-const MZ = 30, PEAK_A = -0.1;
 function mountains() {
+  const MX = (G.x0 + G.x1) / 2, MZ = (G.z0 + G.z1) / 2, { peakA: PEAK_A = 0, peak = 0 } = T.mountains || {};
   const layers = [
-    { r: 330, lo: 8, hi: 40, col: 0x474a5c, haze: 0.3, seed: 3, peak: 34 },
+    { r: 330, lo: 8, hi: 40, col: 0x474a5c, haze: 0.3, seed: 3, peak },
     { r: 480, lo: 16, hi: 64, col: 0x53576e, haze: 0.44, seed: 7, peak: 0 },
     { r: 680, lo: 30, hi: 112, col: 0x646b8a, haze: 0.58, seed: 13, peak: 0 },
   ];
@@ -544,7 +552,7 @@ function mountains() {
       const bin = (k >> 1) % A, a = (((k + 1) >> 1) / A) * Math.PI * 2, [dr, fh, jit] = rows[ri];
       const rr = ly.r + dr + (hash01(((k + 1) >> 1) % A, ri, ly.seed) - 0.5) * 16;   // per edge: a riser stands vertical
       const hh = ridge(((bin + 0.5) / A) * Math.PI * 2) * fh + (hash01(bin * 3, ri, ly.seed + 9) - 0.5) * jit * (ly.hi * 0.5);
-      return [Math.sin(a) * rr, Math.round(hh / step) * step, MZ + Math.cos(a) * rr];
+      return [MX + Math.sin(a) * rr, Math.round(hh / step) * step, MZ + Math.cos(a) * rr];
     };
     base.set(ly.col);
     for (let k = 0; k < 2 * A; k++) for (let ri = 0; ri < rows.length - 1; ri++) {
@@ -560,7 +568,7 @@ function mountains() {
         const lit = 0.55 + 0.85 * Math.max(0, n.dot(L));
         const hf = Math.max(0, Math.min(1, cen.y / ly.hi));
         tmpC.copy(base).multiplyScalar(lit * (0.9 + hf * 0.25));
-        hazeColor(e1.set(cen.x, cen.y, cen.z - MZ).normalize(), hz);
+        hazeColor(e1.set(cen.x - MX, cen.y, cen.z - MZ).normalize(), hz);
         tmpC.lerp(hz, Math.min(1, ly.haze + (1 - hf) * 0.22));
         for (const v of tri) { pos.push(v[0], v[1], v[2]); cols.push(tmpC.r, tmpC.g, tmpC.b); }
       }
@@ -575,11 +583,14 @@ function mountains() {
   return m;
 }
 
-/** fieldFires: [x, z, scale] burning wrecks (their ground is scorched). */
-export function buildTerrain(scene, fieldFires) {
-  const r = makeRng(61), scorch = fieldFires.map(([x, z, s]) => [x, z, s]);
-  for (let i = 0; i < 26; i++) scorch.push([r.range(-40, 40), r.range(-110, 200), r.range(0.5, 0.9)]);
-  // burnt ground where the camp and the summit were fought over (courtyard, parade ground, round the beacon)
-  scorch.push([-20, 132, 0.8], [-3, 116, 0.7], [-30, 121, 0.6], [-9, 186, 0.8], [13, 188, 0.7], [15, 215, 1.1], [-4, 176, 0.6]);
-  scene.add(groundMesh(scorch), cliffs(), pines(), rubble(), tufts(), boulders(), mountains());
+/** The loaded map's terrain (map.js loadMap(def) first) into `root`. Scorched ground: under def.fires (burning wrecks
+ *  [x, z, scale]), def.terrain.scorch.n random marks over its area [x0, z0, x1, z1], and its fixed spots [x, z, s]. */
+export function buildTerrain(root, def) {
+  G = TERRAIN; ({ x0: X0, z0: Z0, step: S, nx: NX, nz: NZ } = G); T = def.terrain || {}; HW = WATER ? WATER.hw : 0;
+  columns(def.pieces);
+  const r = makeRng(61), scorch = (def.fires || []).map(([x, z, s]) => [x, z, s]), sc = T.scorch || {};
+  const [sx0, sz0, sx1, sz1] = sc.area || [G.x0, G.z0, G.x1, G.z1];
+  for (let i = 0; i < (sc.n || 0); i++) scorch.push([r.range(sx0, sx1), r.range(sz0, sz1), r.range(0.5, 0.9)]);
+  scorch.push(...(sc.spots || []));
+  root.add(groundMesh(scorch), cliffs(), pines(), rubble(), tufts(), boulders(), mountains());
 }

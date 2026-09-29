@@ -1,10 +1,10 @@
 // Officer stage shared by the title and select screens (ui lane, render-only): an officer's voxel model on its own rig
-// (kit.model + cloth/hair chains), posed from a held clip frame every render, a stage point up the pass, and the soft
-// round sprite their embers / dust motes are drawn with.
+// (kit.model + cloth/hair chains), posed from a held clip frame every render, the HOME map's stage points (def.stage), and
+// the soft round sprite their embers / dust motes are drawn with.
 import * as THREE from 'three';
 import { CHARS } from '../chars/index.js';
 import { createRig, HERO_SCALE } from '../hero/rig.js';
-import { ground, zone } from '../world/map.js';
+import { ground, MAP } from '../world/map.js';
 
 /** Soft round dot sprite (32 px): white core, alpha a at radius fraction r, clear at the rim. */
 export function dotTex(r, a) {
@@ -18,10 +18,10 @@ export function dotTex(r, a) {
 /** n fixed pseudo-random values in (-1, 1) (render-only scatter, never the sim RNG). */
 export const scatter = (n, off = 0) => Float32Array.from({ length: n }, (_, i) => (Math.sin(i * 12.9898 + off) * 43758.5453) % 1);
 
-/** Point on the pass road: `at` of the way up the pass zone (0 = its south edge) plus dz metres, on the ground. */
-export function passPoint(v, at, dz = 0) {
-  const q = zone('pass'), z = q.z - q.d / 2 + q.d * at + dz;
-  return v.set(q.x, ground(q.x, z), z);
+/** The loaded (HOME) map's stage point `which` ('title' | 'select': def.stage), on the ground. */
+export function stagePoint(v, which) {
+  const [x, z] = MAP.stage[which];
+  return v.set(x, ground(x, z), z);
 }
 
 /** Officer `id` on its own rig under `parent`: { K (kit), root, rig, m (kit.model result), sec (chains), fresh }. */

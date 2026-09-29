@@ -10,27 +10,27 @@
 import { Vector3 } from 'three';
 import { on } from '../core/events.js';
 import { ST } from '../crowd/crowd.js';
-import { ground, zoneAt, GATES, MAP, TERRAIN as G, ROUTE, riverZ, walkIn, WALL_Z, GATE_X, FORDS } from '../world/map.js';
+import { ground, zoneAt, GATES, MAP, TERRAIN as G, ROUTE, WATER, walkIn, openWater, waterPoint } from '../world/map.js';
 import { CHARS, paintPortrait } from '../chars/index.js';
 
 // render-only seam: crowd view skips its 3D officer ▼ where the floating tags below take over
 export const HUD_TAG_R = 44.7;
 
-// Minimap layer: the whole 定軍山 field drawn once, in the minimap's orientation (map up = +Z, up the valley; +X is
-// map-left, as the camera sees it at yaw 0), blitted around the hero every frame. Walkable ground pale with a bright rim
-// where the cliffs / palisades stop you, the Han River, the castle wall with its gate passage, the road dotted in gold.
-// Gates, units and labels are drawn live over it.
+// Minimap layer: the loaded map's whole field drawn once per map, in the minimap's orientation (map up = +Z, the way
+// forward; +X is map-left, as the camera sees it at yaw 0), blitted around the hero every frame. Walkable ground pale
+// with a bright rim where the cliffs / palisades stop you, the water and its fords, the castle wall with its gate
+// passage (def.castle) + def.minimap.walls, the road dotted in gold. Gates, units and labels are drawn live over it.
 const PPM = 2;                        // px per metre
 let layer = null;
-/** { canvas, x1, z1, ppm }: canvas pixel (u, v) ↔ world (x1 - u / ppm, z1 - v / ppm). Built on first use. */
+/** { canvas, x1, z1, ppm, map }: canvas pixel (u, v) ↔ world (x1 - u / ppm, z1 - v / ppm). Built on first use per map. */
 function minimapLayer() {
-  if (layer) return layer;
+  if (layer && layer.map === MAP) return layer;
   const W = (G.x1 - G.x0) * PPM, H = (G.z1 - G.z0) * PPM;
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const g = cv.getContext('2d'), img = g.createImageData(W, H), d = img.data;
   for (let v = 0; v < H; v++) for (let u = 0; u < W; u++) {
     const x = G.x1 - (u + 0.5) / PPM, z = G.z1 - (v + 0.5) / PPM, s = walkIn(x, z), o = (u + v * W) * 4;
-    const wet = Math.abs(z - riverZ(x)) < 6.5;
+    const wet = openWater(x, z);
     if (s > 0) {                                                         // field: pale, bright rim at the edge
       const rim = s < 1.2;
       d[o] = 214; d[o + 1] = 184; d[o + 2] = 130; d[o + 3] = rim ? 190 : 96;
@@ -40,19 +40,26 @@ function minimapLayer() {
   }
   g.putImageData(img, 0, 0);
   const X = (x) => (G.x1 - x) * PPM, Y = (z) => (G.z1 - z) * PPM;
-  // castle wall (-64 … corner tower) + flank wall, gate passage left open
+  // castle wall (x0 … corner tower) + flank wall, gate passage left open (castle.js geometry); extra walls [x0, z0, x1, z1]
   g.fillStyle = 'rgba(236,214,172,0.8)';
-  g.fillRect(X(16.5), Y(WALL_Z + 9), (16.5 + 64) * PPM, 9 * PPM);
-  g.fillRect(X(16.5), Y(150), 9 * PPM, 40 * PPM);
-  g.clearRect(X(GATE_X + 3.6), Y(WALL_Z + 9), 7.2 * PPM, 9 * PPM);
-  g.fillStyle = 'rgba(214,184,130,0.2)'; g.fillRect(X(GATE_X + 3.6), Y(WALL_Z + 9), 7.2 * PPM, 9 * PPM);
+  const c = MAP.castle;
+  if (c) {
+    const e = c.gateX + 26.5;
+    g.fillRect(X(e), Y(c.wallZ + 9), (e - c.x0) * PPM, 9 * PPM);
+    g.fillRect(X(e), Y(c.wallZ + 50), 9 * PPM, 40 * PPM);
+  }
+  for (const [x0, z0, x1, z1] of MAP.minimap?.walls || []) g.fillRect(X(x1), Y(z1), (x1 - x0) * PPM, (z1 - z0) * PPM);
+  if (c) {
+    g.clearRect(X(c.gateX + 3.6), Y(c.wallZ + 9), 7.2 * PPM, 9 * PPM);
+    g.fillStyle = 'rgba(214,184,130,0.2)'; g.fillRect(X(c.gateX + 3.6), Y(c.wallZ + 9), 7.2 * PPM, 9 * PPM);
+  }
   // the road, dotted gold; the ford crossings marked
   g.strokeStyle = 'rgba(208,160,64,0.55)'; g.lineWidth = 1.5; g.setLineDash([4, 5]);
   g.beginPath(); ROUTE.forEach(([x, z], i) => (i ? g.lineTo(X(x), Y(z)) : g.moveTo(X(x), Y(z)))); g.stroke();
   g.setLineDash([]);
   g.fillStyle = 'rgba(236,214,172,0.5)';
-  for (const [a, b] of FORDS) for (let x = a + 1; x < b; x += 2.5) g.fillRect(X(x) - 1, Y(riverZ(x)) - 1, 2, 2);
-  layer = { canvas: cv, x1: G.x1, z1: G.z1, ppm: PPM };
+  for (const [a, b] of WATER?.fords || []) for (let x = a + 1; x < b; x += 2.5) { const [px, pz] = waterPoint(x); g.fillRect(X(px) - 1, Y(pz) - 1, 2, 2); }
+  layer = { canvas: cv, x1: G.x1, z1: G.z1, ppm: PPM, map: MAP };
   return layer;
 }
 
@@ -98,8 +105,9 @@ export function createHud(root, game, camera) {
     Object.assign(S, {
       lastCombo: 0, shownChain: 0, chainF: -99, chainQ: [], ghostN: 0, shownKo: 0, koF: -99, mile: 0, mileQ: 0, mileF: -99, busyF: -99,
       lagHp: 1, lastF: 0, hurtF: -99, actF: 0, band: null, bandQ: [], dlg: null, waveF: -999, allyF: -999, tgt: -1, tgtF: -999, tgtKoF: -999,
-      musouF: -999, musouEnd: -999, waves: [], introCut: 0, obj: null,
+      musouF: -999, musouEnd: -999, waves: [], introCut: 0, obj: null, zone: null,
     });
+    text($('.h-map .seal'), MAP.name.zh);                             // the loaded map (main.js world.load before 'scenario')
     const ch = game.hero.char;                                        // character text + portraits
     text($('.h-intro .zh'), ch.name.zh); text($('.h-intro .seal'), ch.seal); text($('.h-intro .en'), ch.name.en.toUpperCase());
     text($('.h-intro .sub'), ch.motto); text($('.h-player .name'), ch.name.zh);
@@ -406,9 +414,9 @@ export function createHud(root, game, camera) {
       // story mode: the director's morale (stage clears raise it, the ambush / drums drop it)
       set(moraleI, 'transform', `scaleX(${(game.story.morale ?? 0.3 + 0.65 * h.kos / (h.kos + alive + 1)).toFixed(4)})`);
 
-      // minimap: 30 m around the hero, north = up the valley (camera yaw 0; map right = -X), the whole 定軍山 field
-      // (minimapLayer above: walkable ground, cliffs, river, castle wall, road), 10 m grid, closed gates in red, the
-      // enemy HQ on the summit pinned to the rim while it is off the map, the current zone's name along the bottom;
+      // minimap: 30 m around the hero, north = the way forward (camera yaw 0; map right = -X), the loaded field
+      // (minimapLayer above: walkable ground, cliffs, water, castle wall, road), 10 m grid, closed gates in red, the
+      // enemy HQ (def.hq) pinned to the rim while it is off the map, the current zone's name along the bottom;
       // units, view cone, reinforcement pings; officers off the map are pinned to its edge
       const R = 30, s = 100 / R, X = (x) => 100 - (x - h.x) * s, Y = (z) => 100 - (z - h.z) * s;
       map.clearRect(0, 0, 200, 200);
@@ -424,9 +432,9 @@ export function createHud(root, game, camera) {
         const g = GATES[id].rect;
         if (!GATES[id].open) map.fillRect(X(g[2]), Y(g[3]), (g[2] - g[0]) * s, Math.max(3, (g[3] - g[1]) * s));
       }
-      const hqX = X(4), hqY = Y(208);
+      const hq = MAP.hq, hqX = hq ? X(hq[0]) : 100, hqY = hq ? Y(hq[1]) : 100;
       map.font = '700 15px "Xingkai SC", "Kaiti SC", "HudBrush", serif'; map.textAlign = 'center';
-      if (hqX < 8 || hqX > 192 || hqY < 8 || hqY > 192) {           // enemy HQ beyond the map: pin it to the rim
+      if (!hq) { /* no enemy HQ on this map */ } else if (hqX < 8 || hqX > 192 || hqY < 8 || hqY > 192) {   // beyond the map: pin it to the rim
         const dx = hqX - 100, dy = hqY - 100, k = 90 / Math.max(Math.abs(dx), Math.abs(dy)), px = 100 + dx * k, py = 100 + dy * k, a = Math.atan2(dx, -dy);
         map.save(); map.translate(px, py); map.rotate(a);
         map.fillStyle = '#d0a040'; map.beginPath(); map.moveTo(0, -7); map.lineTo(-5, 1); map.lineTo(5, 1); map.fill();

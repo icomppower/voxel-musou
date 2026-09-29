@@ -15,6 +15,7 @@
 // draw length) or swings free (rfree/armR, the mirror of lfree/armL). Zhao Yun never sets rfree (0 = both hands on the
 // shaft as before).
 import * as THREE from 'three';
+import { ground } from '../world/map.js';
 
 export const DIM = {
   thigh: 0.44, shin: 0.44, upper: 0.29, fore: 0.27,
@@ -285,7 +286,7 @@ export function createRig() {
       // head aim is root-space: cancel the torso chain's pitch/yaw (approximate; eulers are not additive)
       j.head.rotation.set(pose[12] - pose[3] - pose[6] - pose[9], pose[13] - pose[4] - pose[7] - pose[10], pose[14]);
       j.weapon.position.set(pose[25], pose[26], pose[27]);
-      j.weapon.rotation.set(-spearElev(pose, pos.y), pose[28], pose[30]);
+      j.weapon.rotation.set(-spearElev(pose, pos.y - ground(pos.x, pos.z)), pose[28], pose[30]);   // clamp height: above the ground, not world y
       for (const s of ['R', 'L']) {
         j['upperArm' + s].quaternion.identity(); j['foreArm' + s].quaternion.identity();
         j['thigh' + s].quaternion.identity(); j['shin' + s].quaternion.identity();
@@ -365,7 +366,8 @@ export function spearWorld(pose, pos, yaw, zBase, zTip, outBase, outTip) {
   weaponWorld(pose, pos, yaw, 0, 0, zTip, outTip);
 }
 
-/** A point (lx, ly, lz m) of the weapon frame in world space (pure). The bow's limbs run along local y (VFX trails). */
+/** A point (lx, ly, lz m) of the weapon frame in world space (pure). The bow's limbs run along local y (VFX trails).
+ *  pos.y is the height above ground (sim space, the ground clamp's plane): the VFX lift the result at draw. */
 export function weaponWorld(pose, pos, yaw, lx, ly, lz, out) {
   _e.set(-spearElev(pose, pos.y), pose[28], pose[30]); _q.setFromEuler(_e);
   const cy = Math.cos(yaw + pose[38]), sy = Math.sin(yaw + pose[38]);

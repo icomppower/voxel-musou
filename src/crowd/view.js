@@ -679,7 +679,8 @@ export function createCrowdView(scene, game) {
       for (let i = 0; i < N; i++) {
         const s = crowd.st[i];
         if (s === ST.OFF) { seen[i] = 0; continue; }
-        if (!frustum.intersectsSphere(sph.set(sph.center.set(crowd.x[i], crowd.y[i] + 1, crowd.z[i]), 2.5))) { seen[i] = 0; continue; }
+        // sim y is height above ground: the sphere sits on the terrain (raised arenas were culled while on screen)
+        if (!frustum.intersectsSphere(sph.set(sph.center.set(crowd.x[i], crowd.y[i] + 1 + ground(crowd.x[i], crowd.z[i]), crowd.z[i]), 2.5))) { seen[i] = 0; continue; }
         const d2 = (crowd.x[i] - camera.position.x) ** 2 + (crowd.z[i] - camera.position.z) ** 2;
         farNow = d2 > FAR_LOD * FAR_LOD; midNow = d2 > MID_LOD * MID_LOD;
         // standing soldiers (idle ranks) are recomputed every 4th frame and replayed in between

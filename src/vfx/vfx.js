@@ -1296,11 +1296,11 @@ export function createVfx(scene, game, world) {
     tgeo.attributes.position.needsUpdate = true; tgeo.attributes.aT.needsUpdate = true;
   }
 
-  // ---- ambient embers: from the fires, and drifting through the fight around the hero
-  const fires = world.fires;
+  // ---- ambient embers: from the fires (world.fires: the loaded map's, read live), and drifting through the fight around the hero
   let emberAcc = 0, driftAcc = 0, moteAcc = 0;
 
   vfx.update = (dt) => {
+    const fires = world.fires;
     emberAcc += dt * 30;
     while (emberAcc > 1 && fires.length) {
       emberAcc--;

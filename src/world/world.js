@@ -1,23 +1,26 @@
-// Battlefield of 定軍山 (layout, heights, walkable ground and gates: map.js). Golden hour as in the concept: a low sun
-// straight up the valley between the castle's corner tower and the camp-shelf watchtowers, sun-aware aerial haze
-// (warm toward the sun, mauve away), voxel terrain with canyon cliffs, the Han River, the castle wall as the Wei
-// camp's front, 魏/蜀 banners with cloth motion, fires with smoke columns and embers, reserve armies, and layered
-// mountains with Dingjun's peak behind the summit. Render-only: never touches sim state (it reads the gate states;
-// river.js reads who wades the ford); all animation is a pure function of render time.
+// The battlefield scene (render-only): a persistent shell — hemisphere / sun (shadow) / rim / fill lights, three
+// firelights + the select screen's 'stage-key', scene.fog (always a THREE.Fog) and the background — plus the loaded
+// map's set in one `root` group: sky dome, voxel terrain with its cliffs, the water, the castle, the dressing and the
+// map's own set pieces (maps/index.js: the def format). world.load(id, { army }) swaps maps in the page (under the
+// loading card / ink): map.js loadMap, then setAtmo + the light / fog / post look re-tuned in place (the light rig and
+// fog type never change, so no program recompiles for them), then the new set is built; the old root is disposed on
+// the next update — after the caller compiled the new set, so programs both sets share never drop to zero users.
+// Never touches sim state (it reads the gate states; the water reads who wades); all animation is a pure function of
+// render time. story:set {id} runs the current map's build().sets[id].
 import * as THREE from 'three';
-import { SUN_DIR, HAZE, installHaze, createSky } from './sky.js';
+import { SUN_DIR, HAZE, installHaze, createSky, setAtmo } from './sky.js';
 import { buildTerrain, GRASS_TIME } from './terrain.js';
 import { buildCastle } from './castle.js';
 import { createRiver } from './river.js';
 import { buildDressing } from './dressing.js';
-import { WALL_Z, GATE_X, CAMP_H, GATES, ground, smooth } from './map.js';
+import { GATES, ground, smooth, loadMap } from './map.js';
+import { MAPS, HOME } from './maps/index.js';
+import { on } from '../core/events.js';
 
-// burning wrecks on the field, near the walkable edges so the fight stays clear: [x, z, scale]
-const FIELD_FIRES = [[-33, -64, 1.2], [32, -58, 1.1], [-30, 8, 1.3], [30, -8, 1.2], [-22, -28, 1.0], [24, 24, 1.1], [15, 40, 1.0],
-  [-36, 126, 1.2], [-12, 202, 1.1]];
-// key light: from behind-left of the up-valley view, higher than the visible sun so the ground reads (hard shadows
-// fall toward the camera, soldiers get a warm rim)
-const LIGHT_DIR = new THREE.Vector3(0.5, 0.58, 0.64).normalize();
+// the default light rig (定軍山's golden hour): key light from behind-left of the up-valley view, higher than the visible
+// sun so the ground reads (hard shadows fall toward the camera, soldiers get a warm rim)
+const LIGHT = { hemi: [0x9cafd4, 0x9a7a5c, 2.2], sun: [0xffcf9a, 4.0], rim: [0xffa060, 1.6], dir: [0.5, 0.58, 0.64], fire: 0xff8a3a, key: null, fill: null };
+const LIGHT_DIR = new THREE.Vector3();
 
 installHaze();
 // the sun's shadow fades out over the outer 20 % of its box instead of cutting off: soldiers and props at the box edge
@@ -30,17 +33,26 @@ const SHADOW_BOX = 34;
     '\t\t\tshadow = mix( shadow, 1.0, smoothstep( 0.8, 0.98, max( abs( shadowCoord.x - 0.5 ), abs( shadowCoord.y - 0.5 ) ) * 2.0 ) );\n\t\t\treturn'));
 }
 
-export function createWorld(scene) {
-  scene.background = HAZE.clone();
-  // clear fight disc; haze reaches 63 % 28 + 290 m out (sky.js): the far zones of the 370 m valley stay silhouettes,
-  // the summit a dark shoulder under its beacon smoke from the Shu camp
-  scene.fog = new THREE.Fog(HAZE.clone(), 36, 330);
-  const sky = createSky();
-  scene.add(sky);
+/** Everything a map's set owns: geometries, materials and their textures (maps, uniforms, closure-held userData.tex). */
+function dispose(root) {
+  root.traverse((o) => {
+    if (o.geometry && !o.isSprite) o.geometry.dispose();                     // (sprites share three's one quad)
+    if (o.isInstancedMesh) o.dispose();
+    for (const m of [].concat(o.material || [])) {
+      for (const v of Object.values(m)) if (v?.isTexture) v.dispose();
+      for (const u of Object.values(m.uniforms || {})) if (u.value?.isTexture) u.value.dispose();
+      for (const t of m.userData.tex || []) t.dispose();
+      m.dispose();
+    }
+  });
+}
 
-  const hemi = new THREE.HemisphereLight(0x9cafd4, 0x9a7a5c, 2.2);  // cool dusk-blue sky fill, warm dust bounce (shade reads blue, light gold)
+export function createWorld(scene, post) {
+  scene.background = new THREE.Color();
+  scene.fog = new THREE.Fog(new THREE.Color(), 36, 330);
+  const hemi = new THREE.HemisphereLight();
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xffcf9a, 4.0);
+  const sun = new THREE.DirectionalLight();
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048); sun.shadow.radius = 2;
   const sc = sun.shadow.camera;
@@ -48,45 +60,74 @@ export function createWorld(scene) {
   sun.shadow.bias = -0.0006;
   sun.shadow.normalBias = 0.03;
   scene.add(sun, sun.target);
-  const rim = new THREE.DirectionalLight(0xffa060, 1.6);            // warm back/rim light from the visible sun
-  rim.position.copy(SUN_DIR).multiplyScalar(100);
+  const rim = new THREE.DirectionalLight();                          // back/rim light from the visible sun
   scene.add(rim);
-
-  buildTerrain(scene, FIELD_FIRES);
-  const river = createRiver(scene);
-  const camp = new THREE.Group();                                   // the castle set stands on the camp plateau
-  camp.position.y = CAMP_H;
-  scene.add(camp);
-  const castle = buildCastle(camp);
-  const dressing = buildDressing(scene, { castle, fieldFires: FIELD_FIRES });
-
   // firelight: three point lights that follow the fight — each frame they sit on the three light sites nearest the
-  // focus (gate fires, the summit's step braziers and beacon, the courtyard braziers, field wrecks), faded by distance
-  // so a swap happens unseen; the same light count as before (every lit shader loops over them). The fourth stays by
-  // the ford wreck: the select screen borrows it as the officer's warm key (select.js 'stage-key').
-  // site: [x, y (above ground), z, intensity, range]
-  const SITES = [[GATE_X - 6.5, 2.2, WALL_Z - 3.5, 30, 11], [GATE_X + 7, 2.2, WALL_Z - 3.5, 30, 11], [-30, 2.2, 8, 30, 11], [30, 2.2, -8, 26, 10],
-    [-2.5, 1.9, 202.0, 30, 12], [10.5, 1.9, 202.0, 30, 12], [15, 9, 213, 60, 18], [-2.2, 1.9, 127.6, 30, 10], [-14, 1.9, 137.2, 26, 10], [-8, 1.9, 196, 24, 10]]
-    .map(([x, y, z, i, d]) => ({ x, y: ground(x, z) + y, z, i, d, k: 0 }));
-  const NEAR = [null, null, null, null];
+  // focus (def.lightSites), faded by distance so a swap happens unseen; the same light count on every map (every lit
+  // shader loops over them). The fourth, 'stage-key', rests at def.light.key: the select screen borrows it as the
+  // officer's warm key (select.js).
   const fireLights = [0, 1, 2].map(() => { const l = new THREE.PointLight(0xff8a3a, 0, 11, 2); scene.add(l); return l; });
   const stageKey = new THREE.PointLight(0xff8a3a, 30, 11, 2);
-  stageKey.position.set(-33, ground(-33, -64) + 2.2, -64); stageKey.name = 'stage-key'; scene.add(stageKey);
-  // summit fill: the sun sits straight behind 夏侯淵's pavilion, so its lacquer and gilt face the lens in shade — a warm
-  // low fill from the valley side (the fires below / sky bounce) eases in on the summit approach only
+  stageKey.name = 'stage-key'; scene.add(stageKey);
+  // fill: a warm low fill from the valley side (the fires below / sky bounce) easing in over def.light.fill's z range
   const fill = new THREE.DirectionalLight(0xffb27a, 0);
   fill.position.set(-0.35, 0.45, -1).multiplyScalar(60); fill.target.position.set(0, 0, 0);
   scene.add(fill, fill.target);
 
-  // gates: render-side eased 0 (shut) … 1 (open) toward the sim state; doors swing in ≈ 1 s, barricades collapse and char
-  const open = { weiCamp: 1, pass: 1, summit: 1 }, CHAR = new THREE.Color(0x3a2a24), WHITE = new THREE.Color(1, 1, 1);
+  const FAR = { x: 0, y: -99, z: 0, i: 0, d: 1, k: 1e9 };            // stands in for missing sites (< 4 on a map)
+  const NEAR = [null, null, null, null], CHAR = new THREE.Color(0x3a2a24), WHITE = new THREE.Color(1, 1, 1);
   const tmp = new THREE.Vector3();
-  let t = 0;
-  return {
-    fires: dressing.fires,
+  let t = 0, cur = null, curArmy, root = null, sky, river, castle, dressing, L, open = {}, SITES = [];
+  const trash = [];
+  on('story:set', (e) => dressing?.set.sets?.[e.id]?.());
+
+  const world = {
+    /** vfx embers: [{ position }] ground-level fires near the fight (y 0: vfx adds ground()); replaced on load. */
+    fires: [],
+    /** Load map `id` (maps/index.js) in army colours { foe, ally } (C3 ARMIES entries; omitted: the map's own 魏 / 蜀
+     *  cloth). No-op when that map is already up in those armies, or at all when `army` is omitted (the title swap back
+     *  to HOME keeps the last battle's). Sim + render: call between battles, then compile before the next frame. */
+    load(id = HOME, { army } = {}) {
+      const def = MAPS[id] || MAPS[HOME];
+      if (def === cur && (!army || (army.foe === curArmy?.foe && army.ally === curArmy?.ally))) return;   // (compared by side: a fresh pair of the same armies is the same set)
+      cur = def; curArmy = army;
+      loadMap(def);
+      setAtmo(def.sky);
+      L = { ...LIGHT, ...def.light };
+      scene.background.copy(HAZE); scene.fog.color.copy(HAZE); [scene.fog.near, scene.fog.far] = def.fog || [36, 330];
+      hemi.color.set(L.hemi[0]); hemi.groundColor.set(L.hemi[1]); hemi.intensity = L.hemi[2];
+      sun.color.set(L.sun[0]); sun.intensity = L.sun[1];
+      rim.color.set(L.rim[0]); rim.intensity = L.rim[1]; rim.position.copy(SUN_DIR).multiplyScalar(100);
+      LIGHT_DIR.set(...L.dir).normalize();
+      for (const l of [...fireLights, stageKey]) l.color.set(L.fire);
+      if (L.key) stageKey.position.set(L.key[0], ground(L.key[0], L.key[1]) + 2.2, L.key[1]);
+      post?.setLook(def.post);
+
+      if (root) { scene.remove(root); trash.push(root); }
+      root = new THREE.Group(); root.name = 'map-' + def.id;             // identity transform: fires carry world positions
+      sky = createSky();
+      root.add(sky);
+      buildTerrain(root, def);
+      river = createRiver(root);
+      castle = null;
+      if (def.castle) {
+        const camp = new THREE.Group();                                   // the castle set stands on its plateau
+        camp.position.y = def.castle.y;
+        root.add(camp);
+        castle = { ...buildCastle(camp, def.castle), ...def.castle };
+      }
+      // site: [x, y (above ground), z, intensity, range]
+      SITES = (def.lightSites || []).map(([x, y, z, i, d]) => ({ x, y: ground(x, z) + y, z, i, d, k: 0 }));
+      dressing = buildDressing(root, def, { army, castle, sites: SITES });
+      world.fires = dressing.fires;
+      // gates: render-side eased 0 (shut) … 1 (open) toward the sim state; doors swing in ≈ 1 s, barricades collapse and char
+      open = Object.fromEntries(Object.keys(GATES).map((g) => [g, 1]));
+      scene.add(root);
+    },
     update(dt, focus, game) {
+      for (const r of trash.splice(0)) dispose(r);
       t += dt;
-      river.update(dt, game);
+      river?.update(dt, game);
       // shadow frustum follows the focus (snapped to texels to avoid shimmer), at the ground under it
       const step = 2 * SHADOW_BOX / 2048;
       tmp.set(Math.round(focus.x / step) * step, ground(focus.x, focus.z), Math.round(focus.z / step) * step);
@@ -94,21 +135,25 @@ export function createWorld(scene) {
       sun.position.copy(LIGHT_DIR).multiplyScalar(70).add(tmp);
       sky.material.uniforms.uTime.value = t; GRASS_TIME.value = t;
       dressing.update(t, focus);
-      castle.update(t);
-      for (const id in open) open[id] += ((GATES[id].open ? 1 : 0) - open[id]) * Math.min(1, dt * 3);
-      castle.setDoors(open.weiCamp * (2 - open.weiCamp));
-      for (const id of ['pass', 'summit']) {
-        const g = dressing.gates[id], k = open[id];
-        g.m.rotation.x = -0.25 * k; g.m.scale.y = 1 - 0.72 * k; g.m.position.y = g.y - 0.1 * k;   // broken down to a low burning wreck
-        g.mat.color.copy(WHITE).lerp(CHAR, k);
+      castle?.update(t);
+      for (const id in open) {
+        const k = open[id] += ((GATES[id].open ? 1 : 0) - open[id]) * Math.min(1, dt * 3), kind = GATES[id].kind;
+        if (kind === 'doors' && castle?.gate === id) castle.setDoors(k * (2 - k));
+        const g = kind === 'barricade' && dressing.gates[id];
+        if (g) {
+          g.m.rotation.x = -0.25 * k; g.m.scale.y = 1 - 0.72 * k; g.m.position.y = g.y - 0.1 * k;   // broken down to a low burning wreck
+          g.mat.color.copy(WHITE).lerp(CHAR, k);
+        }
       }
+      dressing.set.update?.(dt, game);
       // the four sites nearest the focus (partial selection, no allocation); lights 0-2 take the first three, each faded
       // out as the fourth closes in on it, so the hand-over from one site to the next is never a pop
       for (const s of SITES) s.k = Math.hypot(s.x - focus.x, s.z - focus.z);
       for (let n = 0; n < 4; n++) {
         let best = null;
         for (const s of SITES) if (!s.used && (!best || s.k < best.k)) best = s;
-        best.used = true; NEAR[n] = best;
+        if (best) best.used = true;
+        NEAR[n] = best || FAR;
       }
       for (let n = 0; n < 3; n++) {
         const b = NEAR[n], l = fireLights[n], fl = 0.93 + Math.sin(t * (13 + n * 3.1) + n) * 0.17 + Math.sin(t * 7.3 + n * 2) * 0.13;
@@ -116,9 +161,11 @@ export function createWorld(scene) {
         l.intensity = b.i * fl * (1 - smooth(26, 40, b.k)) * smooth(0, 6, NEAR[3].k - b.k);
       }
       for (const s of SITES) s.used = false;
-      stageKey.intensity = 28 + Math.sin(t * 22.3 + 3) * 5 + Math.sin(t * 7.3 + 6) * 4;
-      fill.intensity = 1.5 * smooth(160, 188, focus.z);
+      stageKey.intensity = L.key ? 28 + Math.sin(t * 22.3 + 3) * 5 + Math.sin(t * 7.3 + 6) * 4 : 0;
+      fill.intensity = L.fill ? L.fill[2] * smooth(L.fill[0], L.fill[1], focus.z) : 0;
       fill.target.position.set(focus.x, 0, focus.z); fill.position.set(focus.x - 21, 27, focus.z - 60);
     },
   };
+  world.load(HOME);
+  return world;
 }

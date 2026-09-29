@@ -6,8 +6,8 @@
 //   story.stats()                          → { kos, time (s), hpMax, maxChain, dmg, rank? } (story:end / result)
 //   story.morale                           蜀 share of the HUD morale bar 0-1 (undefined in free mode: HUD falls back)
 //   story.target                           {x, z} the HUD objective arrow points at, or null
-// Map gates (world/map.js GATES: 'pass' barricade, 'weiCamp' castle gate, 'summit' barricade) are sim state: story mode
-// closes all three at reset, a beat's `gate: id` opens one (clampWalk lets everyone through, world.js burns / swings it).
+// Map gates (world/map.js GATES, the loaded map's def.gates) are sim state: story mode closes all of them at reset, a
+// beat's `gate: id` opens one (clampWalk lets everyone through, world.js burns / swings it).
 // Emits story:say / story:banner / story:objective / story:end (payloads: core/events.js). The flow
 // (main.js) leaves the battle for the result screen on story:end; the HUD shows the rest.
 // Also owns game.timeScale (wall-clock pace of the fixed-step loop, main.js): 1, except the victory slow-mo.
@@ -19,15 +19,17 @@
 // its trigger holds and beat k-1 has fired; a `limit` keeps the hero from running past the stage he is on (DW8's
 // barred gates), so the script can't be skipped or soft-locked by running ahead, and going back is always free.
 import { emit, on } from '../core/events.js';
-import { zone, setGate, GATES, WALL_Z, GATE_X } from '../world/map.js';
+import { zone, anchor, setGate, GATES, MAP } from '../world/map.js';
 import { CHARS } from '../chars/index.js';
 import { BEATS, OFF, SPK } from './ch1.js';
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
-/** Script position P = [zone id, fx, fz] (fractions of the zone's half extents) or ['gate', dx, dz] (metres). */
+/** Script position P = [zone id, fx, fz] (fractions of the zone's half extents) or [anchor id, dx, dz] (metres from a
+ *  map anchor: def.anchors). */
 function pos([id, a, b]) {
-  if (id === 'gate') return [GATE_X + a, WALL_Z + b];
+  const p = anchor(id);
+  if (p) return [p[0] + a, p[1] + b];
   const q = zone(id), hw = q.r ?? q.w / 2, hd = q.r ?? q.d / 2;
   return [q.x + a * hw, q.z + b * hd];
 }
@@ -107,7 +109,7 @@ export function createStory(game) {
     if (mode === 'story') for (const id in GATES) setGate(id, false);   // spawnPoint() opened them all; the script opens each
     st.morale = mode === 'story' ? 0.4 : undefined;
     const c = game.crowd;
-    if (mode === 'free') { c.spawnArmy(); c.spawnAllies({ x: 0, z: -9, n: 24, cols: 6 }); }
+    if (mode === 'free') { const o = MAP.spawn.free; c.spawnArmy(); c.spawnAllies({ x: o.x, z: o.z - 9, n: 24, cols: 6 }); }   // allies 9 m behind the arena centre
     else for (const sx of [-1, 1]) c.spawnAllies({ x: sx * 5.575, z: -121.6, n: 12, cols: 4, hold: true });
     c.setAllies(true);
     // story: the first beat spawns the field on step 1 — after main.js's 'scenario' reset of the HUD, so its objective sticks

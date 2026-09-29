@@ -15,7 +15,7 @@ import { createNav, sfx, inkWipe, wiping, afterWipe, stamp, clearStamp, replay }
 import { SWASH, STAGE as TITLE } from './title.js';
 import { MODE } from './loading.js';
 import { difficulty } from '../core/difficulty.js';
-import { dotTex, scatter, passPoint, standOfficer, poseOfficer } from './stage.js';
+import { dotTex, scatter, stagePoint, standOfficer, poseOfficer } from './stage.js';
 
 const STATS = [['atk', '攻', 'Attack'], ['def', '防', 'Defence'], ['speed', '速', 'Speed'], ['range', '射程', 'Reach']];
 // stage framing: officer ≈ 6.3 m from the lens, 30° vFOV (full body + headroom), aim shifted so he stands at x ≈ 75 %
@@ -137,7 +137,7 @@ export function createSelect(el, flow) {
     if (!group) build(scene);
     group.visible = true;
     dt = Math.min(dt || 1 / 60, 0.1); t += dt; spinT += dt;
-    const S = STAGE, p = passPoint(P, 0, 10), id = CHAR_ORDER[cur];   // the foot of the mountain road (山道), looking up it
+    const S = STAGE, p = stagePoint(P, 'select'), id = CHAR_ORDER[cur];   // def.stage.select (定軍山: the foot of the pass road, looking up it)
     for (const k in models) models[k].root.visible = k === id;
     const M = model(id);
     if (key) key.position.set(p.x + 1.6, p.y + 2.3, p.z - 2.4);
