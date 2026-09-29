@@ -1,4 +1,6 @@
-// Terrain of the 定軍山 field (render-only, built once from the map grid in map.js):
+// Terrain of a Dingjun-style field (render-only, built from the active map grid in map.js, once per battlefield):
+// 定軍山 and every field re-dressed from it (漢水). Each field brings a PROFILE (cliff rise per piece, extra paving,
+// beaten earth, scattering ranges, scorch); DINGJUN_PROFILE reproduces the original set exactly.
 //  · ground: one textured plane over the whole 2 m grid, heights = ground(), vertex colours for dust drifts,
 //    damp river banks, scorched earth, cliff-foot AO and bare rock on the high ground, a dry-grass map splatted in by
 //    grassAt() and flagstone paving drawn in the shader (+ instanced wind-swayed tufts, voxel boulders at the cliff feet);
@@ -11,34 +13,75 @@ import * as THREE from 'three';
 import { makeRng, hash01 } from '../core/rng.js';
 import { boxesGeometry, makeBuilder } from '../core/voxel.js';
 import { hazeColor, SUN_DIR, SUN_AZ, NOISE_GLSL } from './sky.js';
-import { TERRAIN as G, PIECE_IDS, ground, noise2, smooth, riverZ, routeDist, onProp, node, SUMMIT_H } from './map.js';
+import { TERRAIN as G, PIECE_IDS, ground, noise2, smooth, riverZ, routeDist, onProp, node, mapId, SUMMIT_H } from './map.js';
 import { wrap } from '../crowd/crowd.js';
 
-const { x0: X0, z0: Z0, step: S, nx: NX, nz: NZ } = G;
+// ---------------------------------------------------------------- per-field profile
+/**
+ * What makes a field's terrain its own (everything else is shared):
+ *   rise    { piece id: m } the rock climbs toward away from the walkable edge (× 0.65-1.35 ridge noise)
+ *   column  (id, x, z, d, n) → m | undefined: a special column top (定軍山: the summit's rim and drop), else the rise
+ *   skip    (x, z, id) → true: no column on this node (open water beside the field)
+ *   pave    (x, z) → extra paving mask (plazas, squares); beaten (x, z) → grass multiplier (camps: beaten earth)
+ *   tuftZ / rubbleX / rubbleZ  [lo, hi] scatter ranges; scorch (r) → extra [x, z, s] burnt ground (after the field fires)
+ */
+export const DINGJUN_PROFILE = {
+  rise: { honjin: 5, ford: 9, mouth: 22, basin: 26, climb: 34, plaza: 3, gateway: 3, court: 3.5, ramp: 16, summit: 40 },
+  column: (id, x, z, d, n) => (id === 'summit' && z < 212 ? (d < 3 ? SUMMIT_H + 1 : SUMMIT_H - Math.min(SUMMIT_H + 1, (d - 3) * (1.1 + n))) : undefined),   // rim, then the drop
+  skip: (x, z, id) => id === 'ford' && Math.abs(z - riverZ(x)) < 7.5,        // the river cuts through the banks
+  pave: (x, z) => {
+    let m = 0;
+    if (z > 76 && z < 140 && x > -30 && x < 5) m += 0.55;                      // plaza + courtyard: worn paving
+    if (Math.hypot(x - 2, z - 194) < 13) m += 0.7;                             // summit parade ground
+    if (Math.hypot(x, z + 140) < 11) m += 0.6;                                 // 本陣 square
+    return m;
+  },
+  beaten: (x, z) => (z > 74 && z < 142 && x > -44 && x < 7 ? 0.15 : 1),        // the Wei camp: beaten earth
+  tuftZ: [-160, 222], rubbleX: [-60, 60], rubbleZ: [-156, 215],
+  scorch: (r) => {
+    const out = [];
+    for (let i = 0; i < 26; i++) out.push([r.range(-40, 40), r.range(-110, 200), r.range(0.5, 0.9)]);
+    // burnt ground where the camp and the summit were fought over (courtyard, parade ground, round the beacon)
+    out.push([-20, 132, 0.8], [-3, 116, 0.7], [-30, 121, 0.6], [-9, 186, 0.8], [13, 188, 0.7], [15, 215, 1.1], [-4, 176, 0.6]);
+    return out;
+  },
+};
 
-// ---------------------------------------------------------------- cliff heights
-// Rise (m) toward which the rock climbs away from the walkable edge, per owning piece (× 0.65-1.35 ridge noise).
-const RISE = { honjin: 5, ford: 9, mouth: 22, basin: 26, climb: 34, plaza: 3, gateway: 3, court: 3.5, ramp: 16, summit: 40 };
+// the field being built (buildTerrain sets these from the active grid; the builders below read them)
+let X0, Z0, S, NX, NZ, TOP, P;
+const TOPS = {};                     // column tops per built field id (topAt)
 const COL = -1.4;                    // a node grows a column this far outside the walk edge (its face then stands ≥ 0.4 m out)
 /** Column top per grid node (m, 1 m courses), NaN where there is walkable ground / river. */
-const TOP = new Float32Array(NX * NZ).fill(NaN);
-for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
-  const k = i + j * NX, f = G.in[k];
-  if (f > COL) continue;
-  const x = X0 + i * S, z = Z0 + j * S, h = G.h[k], d = -f, id = PIECE_IDS[G.own[k]];
-  if (id === 'ford' && Math.abs(z - riverZ(x)) < 7.5) continue;              // the river cuts through the banks
-  if (onProp(x, z)) continue;                                                  // a set piece's footprint (pavilion terrace, table)
-  const n = noise2(x * 0.045, z * 0.045, 71);
-  let t;
-  if (id === 'summit' && z < 212) t = d < 3 ? SUMMIT_H + 1 : SUMMIT_H - Math.min(SUMMIT_H + 1, (d - 3) * (1.1 + n));   // rim, then the drop
-  else t = h + Math.max(1.2, RISE[id] * (0.65 + 0.7 * n) * (1 - Math.exp(-d / 7))) + (hash01(i, j, 5) - 0.5) * 1.2;
-  t *= smooth(0, 30, Math.min(i, j, NX - 1 - i, NZ - 1 - j) * S);           // settle onto the outer plain at the grid rim
-  TOP[k] = Math.round(t);
+function columns() {
+  const top = new Float32Array(NX * NZ).fill(NaN);
+  for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
+    const k = i + j * NX, f = G.in[k];
+    if (f > COL) continue;
+    const x = X0 + i * S, z = Z0 + j * S, h = G.h[k], d = -f, id = PIECE_IDS[G.own[k]];
+    if (P.skip(x, z, id)) continue;
+    if (onProp(x, z)) continue;                                                  // a set piece's footprint (pavilion terrace, table)
+    const n = noise2(x * 0.045, z * 0.045, 71);
+    let t = P.column(id, x, z, d, n);
+    if (t === undefined) t = h + Math.max(1.2, P.rise[id] * (0.65 + 0.7 * n) * (1 - Math.exp(-d / 7))) + (hash01(i, j, 5) - 0.5) * 1.2;
+    t *= smooth(0, 30, Math.min(i, j, NX - 1 - i, NZ - 1 - j) * S);           // settle onto the outer plain at the grid rim
+    top[k] = Math.round(t);
+  }
+  return top;
 }
-/** Surface height at (x, z) including rock columns (props on the heights: watchtowers, pines, troops). */
+/** Point the builders at the active field (its grid and profile), its column tops computed on first use. */
+function prepare(profile) {
+  ({ x0: X0, z0: Z0, step: S, nx: NX, nz: NZ } = G);
+  P = profile;
+  TOP = TOPS[mapId()] || (TOPS[mapId()] = columns());
+  TOP.nx = NX; TOP.x0 = X0; TOP.z0 = Z0;
+}
+prepare(DINGJUN_PROFILE);            // 定軍山 is active at import: dressing.js reads its tops while it builds
+const DING_TOP = TOP;
+/** Surface height at (x, z) including rock columns (props on the heights: watchtowers, pines, troops): the active
+ *  field's columns when this module built it, else 定軍山's (the other sets place on walkable ground only). */
 export function topAt(x, z) {
-  const i = Math.round((x - X0) / S), j = Math.round((z - Z0) / S);
-  const t = i >= 0 && j >= 0 && i < NX && j < NZ ? TOP[i + j * NX] : NaN;
+  const T = TOPS[mapId()] || DING_TOP, i = Math.round((x - T.x0) / S), j = Math.round((z - T.z0) / S);
+  const t = i >= 0 && j >= 0 && i < T.nx && j < T.length / T.nx ? T[i + j * T.nx] : NaN;
   return Number.isNaN(t) ? ground(x, z) : t;
 }
 
@@ -49,9 +92,7 @@ function paveBase(x, z) {
   if (Math.abs(z - riverZ(x)) < 9) return -9;
   // noise paving only grows out of the road (bulges joined to it): far from the route it left orphan flagstone islands
   let m = noise2(x * 0.07, z * 0.07, 5) * 1.3 - 0.62 - 1.2 * smooth(4, 9, routeDist(x, z));
-  if (z > 76 && z < 140 && x > -30 && x < 5) m += 0.55;                      // plaza + courtyard: worn paving
-  if (Math.hypot(x - 2, z - 194) < 13) m += 0.7;                             // summit parade ground
-  if (Math.hypot(x, z + 140) < 11) m += 0.6;                                 // 本陣 square
+  m += P.pave(x, z);
   const hole = noise2(x * 0.15, z * 0.15, 8);                                // broken patches of bare dust
   return m - Math.max(0, Math.min(1, (hole - 0.5) / 0.14)) * 1.0;
 }
@@ -114,8 +155,7 @@ function grassAt(x, z) {
   if (inside > 5) g *= 0.5 + 0.5 * smooth(0.42, 0.7, noise2(x * 0.11, z * 0.11, 43));   // trampled where the fight runs
   const dz = Math.abs(z - riverZ(x));
   g = Math.max(g, (1 - smooth(8, 15, dz)) * smooth(4.4, 6.2, dz));              // lush banks, not in the water
-  if (z > 74 && z < 142 && x > -44 && x < 7) g *= 0.15;                         // the Wei camp: beaten earth
-  return g;
+  return g * P.beaten(x, z);
 }
 
 function grassTexture() {
@@ -306,7 +346,7 @@ function tufts() {
   };
   const r = makeRng(404), spots = [];
   for (let n = 0; n < 80000 && spots.length < 9000; n++) {
-    const x = r.range(X0 + 4, X0 + (NX - 1) * S - 4), z = r.range(-160, 222);
+    const x = r.range(X0 + 4, X0 + (NX - 1) * S - 4), z = r.range(P.tuftZ[0], P.tuftZ[1]);
     const k = node(x, z);
     if (TOP[k] > G.h[k] || G.in[k] < -1.2 || Math.abs(z - riverZ(x)) < 4.8) continue;   // not in the rock or the water
     const gm = grassAt(x, z);
@@ -479,7 +519,7 @@ function rubble() {
   const r = makeRng(17), list = [];
   const COLS = [0x6a5e56, 0x5e544e, 0x74685e, 0x564a44, 0x6e6660, 0x3a2a22];
   for (let k = 0; k < 420 && list.length < 2400; k++) {
-    const cx = r.range(-60, 60), cz = r.range(-156, 215);
+    const cx = r.range(P.rubbleX[0], P.rubbleX[1]), cz = r.range(P.rubbleZ[0], P.rubbleZ[1]);
     const f = G.in[node(cx, cz)];
     if (f < 0.5 || routeDist(cx, cz) < 3 || Math.abs(cz - riverZ(cx)) < 6) continue;   // on the field, off the road and the water
     const n = r.int(3, 10), spread = r.range(0.6, 1.6), gy = ground(cx, cz);
@@ -575,11 +615,11 @@ function mountains() {
   return m;
 }
 
-/** fieldFires: [x, z, scale] burning wrecks (their ground is scorched). */
-export function buildTerrain(scene, fieldFires) {
+/** The active field's terrain under `scene`. fieldFires: [x, z, scale] burning wrecks (their ground is scorched);
+ *  profile: the field's PROFILE (default 定軍山's). */
+export function buildTerrain(scene, fieldFires, profile = DINGJUN_PROFILE) {
+  prepare(profile);
   const r = makeRng(61), scorch = fieldFires.map(([x, z, s]) => [x, z, s]);
-  for (let i = 0; i < 26; i++) scorch.push([r.range(-40, 40), r.range(-110, 200), r.range(0.5, 0.9)]);
-  // burnt ground where the camp and the summit were fought over (courtyard, parade ground, round the beacon)
-  scorch.push([-20, 132, 0.8], [-3, 116, 0.7], [-30, 121, 0.6], [-9, 186, 0.8], [13, 188, 0.7], [15, 215, 1.1], [-4, 176, 0.6]);
+  scorch.push(...P.scorch(r));
   scene.add(groundMesh(scorch), cliffs(), pines(), rubble(), tufts(), boulders(), mountains());
 }
