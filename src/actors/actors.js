@@ -13,7 +13,7 @@
 //                           invuln (default: every role but the boss) }. A key already on the field is replaced.
 //   get(key) → actor | null the live record (read it, never write it): { key, role, x, z, y (above ground), yaw, hp, hpMax,
 //                           dead, state, ... }; dead = beaten (down, or broke off at retreatAt)
-//   order(key, do, at)      'retreat' | 'join' | 'hold' | 'follow'; at: {x, z} | [x, z] (see Orders)
+//   order(key, do, at)      'retreat' | 'join' | 'hold' | 'follow'; at: {x, z} | [x, z] (see Orders; ignored once he is beaten)
 //   list                    this battle's actors in spawn order (gone ones included)
 //   foe(a)                  a can be hit right now (a boss standing: not down / retreating / gone / invulnerable)
 //   nearestFoe(x, z, r, yaw, cone) → actor | null     (soft lock, arrow lock-on, camera target, aim)
@@ -30,7 +30,8 @@
 //   ally  friend, invulnerable by default. Keeps 4-8 m off the hero on his flank; picks Wei grunts ≥ 3 m off him (his ring
 //         stays his, formations are left alone) and fights them with the kit's own moves (n1 → n2 …, now and then the
 //         charge off the string); they land through combat.npcStrike (the reactions of a hero blow, no hero credit, never
-//         on an officer), and a boss within reach takes chip damage.
+//         on an officer). A boss within ACTOR.scan m comes first: his blows chip it (× ACTOR.chip, never past its retreat
+//         mark / 1 HP — the hero beats him).
 //   npc   friend, never fights (an escort): follows or holds.
 // Orders: follow — keep with the hero (ally / npc default) · join — boss: fight the hero (default), friends: follow ·
 //   hold — go to `at` (default: where he stands) and stay (a boss only swings at a hero within ACTOR.leash of the post, an
@@ -155,7 +156,7 @@ export function createActors(game) {
 
   A.order = (key, what, at) => {
     const a = byKey.get(key);
-    if (!a || a.state === 'gone' || a.state === 'down') return;
+    if (!a || a.dead || a.state === 'gone') return;                   // (a beaten one is out of the fight for good)
     const p = at ? (Array.isArray(at) ? at : [at.x, at.z]) : null;
     if (what === 'retreat') { retreat(a, p, false); return; }
     a.mode = what === 'hold' ? 'hold' : a.isFoe ? 'join' : 'follow';
@@ -266,12 +267,12 @@ export function createActors(game) {
   }
 
   // ---- allied officers
-  /** Next foe for ally a fighting round (ax, az): a boss within 6 m first (chip), else the nearest free Wei grunt. */
+  /** Next foe for ally a fighting round (ax, az): a boss within ACTOR.scan m first (chip), else the nearest free Wei grunt. */
   function target(a, ax, az) {
     a.tgt = -1; a.tgtA = null;
-    for (const f of A.list) if (A.foe(f) && (f.x - a.x) ** 2 + (f.z - a.z) ** 2 < 36) { a.tgtA = f; return; }
-    const c = game.crowd, h = game.hero, R = a.mode === 'hold' ? ACTOR.holdR : ACTOR.fightR;
     let bd = ACTOR.scan * ACTOR.scan;
+    for (const f of A.list) if (A.foe(f) && (f.x - a.x) ** 2 + (f.z - a.z) ** 2 < bd) { a.tgtA = f; return; }
+    const c = game.crowd, h = game.hero, R = a.mode === 'hold' ? ACTOR.holdR : ACTOR.fightR;
     for (let i = 0; i < c.grunts; i++) {
       const s = c.st[i];
       if (s === ST.OFF || s >= ST.AIR || c.form[i]) continue;          // airborne / down / dead, and blocks still in rank

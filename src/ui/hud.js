@@ -6,10 +6,10 @@
 // Character text / portraits come from game.hero.char (src/chars/index.js), refreshed on every 'scenario'. Dialogue,
 // banners and the objective are driven by story events (story:say / story:banner / story:objective, core/events.js).
 // Render-only: reads sim state, never writes it. Animations are timed in sim frames.
-// Hero-model actors (game.actors, src/actors): a boss gets the boss bar (top centre: brush name, red seal, HP + lag + poise,
-// pulsing while enraged; the foe last struck, else the first one standing) and big banners on spawn / break-off / fall
-// (the story banner band); every actor standing gets a floating tag (a boss the officers' ▼▼ + HP, a friend a jade name)
-// and a minimap square (boss gold-rimmed red, friend green).
+// Hero-model actors (game.actors, src/actors): a boss gets the boss bar (top, left of the minimap: brush name, red seal,
+// HP + lag + poise, pulsing while enraged; the foe last struck, else the first one standing) and big banners on spawn /
+// break-off / fall (the story banner band); every actor standing gets a floating tag (the one in the boss bar just ▼▼,
+// another foe the officers' ▼▼ + HP, a friend a jade name) and a minimap square (boss gold-rimmed red, friend green).
 // Styles live in index.html (#hud ...). Sizes are rem, and 1rem = 1/72 of the viewport height (10 px at 720p).
 import { Vector3 } from 'three';
 import { on } from '../core/events.js';
@@ -346,7 +346,7 @@ export function createHud(root, game, camera) {
         target.classList.toggle('ko', tKo);
       }
 
-      // boss bar (actors lane, top centre): the foe actor last struck, else the first one standing; held 2.5 s after he
+      // boss bar (actors lane, top, left of the minimap): the foe actor last struck, else the first one standing; held 2.5 s after he
       // falls / breaks off. HP (white lag chunk drains 1/3 s after a hit) over the poise bar; pulses red while enraged.
       // Hidden in the Musou cut, stepped back under the KO milestone (as the tags).
       let ba = S.boss;
@@ -387,7 +387,7 @@ export function createHud(root, game, camera) {
           if (o.bx - o.tw / 2 >= r) continue;                             // body onto the officer: then beside it
           if (bt + o.th > o.ay - o.mkH + rem) o.bx = r + o.tw / 2 + 0.5 * rem; else top = Math.max(top, bt);
         }
-        if (bossOn && o.bx + o.tw / 2 > W * 0.405 && o.bx - o.tw / 2 < W * 0.735) top = Math.max(top, 8 * rem);   // under the boss bar
+        if (bossOn && o.bx + o.tw / 2 > boss.offsetLeft && o.bx - o.tw / 2 < boss.offsetLeft + boss.offsetWidth) top = Math.max(top, 8 * rem);   // under the boss bar
         o.by = Math.min(H * 0.8, Math.max(o.by, top + o.th));
         return top;
       };
