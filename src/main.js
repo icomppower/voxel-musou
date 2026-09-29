@@ -39,6 +39,7 @@ import { createLoading } from './ui/loading.js';
 import { inkWipe, inkBoot, wiping, createNav, sfx, replay } from './ui/menu.js';
 import { createPrologue } from './story/prologue.js';
 import { createResult } from './story/result.js';
+import { chapter } from './story/chapters.js';
 import { difficulty, recordClear } from './core/difficulty.js';
 
 const params = new URLSearchParams(location.search);
@@ -106,11 +107,11 @@ function render(real) {
   hud.update();
 }
 
-/** New battle: { char: CHARS id, mode: 'story' | 'free', map: battlefield id (free only; the story is 定軍山) }. Puts
+/** New battle: { char: CHARS id, mode: 'story' | 'free', map: battlefield id (story: the chapter fought there, story/chapters.js) }. Puts
  *  the field up, resets every sim module (deterministic from here: both RNGs reseeded, frame 0), rebuilds the kit views
  *  on a character change, lets the story spawn the field. */
 function startBattle({ char = 'zhaoyun', mode = 'free', map = 'dingjun' } = {}) {
-  world.use(mode === 'story' ? 'dingjun' : map);
+  world.use(map);
   const ch = CHARS[char] || CHARS.zhaoyun, p = spawnPoint(mode), newKit = ch.kit !== game.hero.kit;
   Object.assign(game, { mode, frame: 0, hitstop: 0, freeze: 0, diff: difficulty() });
   lastRenderFrame = 0;
@@ -222,7 +223,7 @@ async function deploy(c) {
   L.ready(); sfx('ok');
   await sleep(450);
   if (state !== 'loading') return;
-  inkWipe(() => flow.go(c.mode === 'story' && !c.retry ? 'prologue' : 'battle', c));
+  inkWipe(() => flow.go(c.mode === 'story' && !c.retry && chapter(c.map).CHAPTER.prologue ? 'prologue' : 'battle', c));
 }
 const screens = {
   title: createTitle($('title'), flow), select: createSelect($('select'), flow), loading: createLoading($('loading')),

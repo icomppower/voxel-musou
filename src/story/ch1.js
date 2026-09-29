@@ -46,6 +46,14 @@ export const OFF = {
   guard: { name: { zh: '親衛隊長', en: 'GUARD CAPTAIN' }, hp: 320 },
 };
 
+export const CHAPTER = {
+  map: 'dingjun',
+  label: ['第一章「定軍山」', 'Story · Chapter I · Mount Dingjun'],
+  head: '第一章 定軍山 · CHAPTER I · MOUNT DINGJUN',
+  allies: [-1, 1].map((sx) => ({ x: sx * 5.575, z: -121.6, n: 12, cols: 4, hold: true })),   // the van either side of the road inside the 本陣 gate
+  prologue: true,
+};
+
 const SUMMIT_GATE = ['summit', -0.65, -0.53];   // the 'summit' barricade across the ramp (≈ -20, 176)
 const NAG = { who: 'fazheng', zh: '將軍且慢！前方尚未肅清，不可孤軍深入。', en: 'Wait, General! The way ahead isn\'t secured — don\'t go in alone.' };
 const NAG_GATE = { who: 'fazheng', zh: '營門緊閉，須先擊破守將張郃！', en: 'The gate is barred. Defeat Zhang He, who guards it!' };

@@ -392,7 +392,7 @@ export function createCrowdView(scene, game) {
     }
     return m;
   };
-  const G = crowd.grunts, O = CROWD.officers, A = CROWD.allySlots, GA = G + A;
+  const G = crowd.grunts, O = CROWD.officerSlots, A = CROWD.allySlots, GA = G + A;
   // one body-part set from geos[pre + part] for n soldiers (two arms / thighs / shins each). Voxel sets: the solid-box
   // proxies cast their shadows (cast: every part casts its own — officers); far box sets: one trunk + limbs, all cast
   const parts = (pre, n, cast = false) => ({ hips: mk(geos[pre + 'hips'], n, mat, cast), torso: mk(geos[pre + 'torso'], n, mat, cast || geos.shadow_trunk),

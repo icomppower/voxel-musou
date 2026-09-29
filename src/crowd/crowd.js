@@ -47,7 +47,7 @@ const officerName = (k) => { const o = MAP.officers || FREE_OFFICERS; return o[k
 
 export const CROWD = {
   officers: 4,                  // officers the free-mode army fields (and brings back with the waves)
-  officerSlots: 6,              // officer slots (indices grunts … N-1); the story may field up to this many at once
+  officerSlots: 12,             // officer slots (indices grunts … N-1); the story may field up to this many at once (赤壁: 曹操's guard)
   walk: 2.4, run: 4.8, march: 3.0, charge: 5.0, turn: 7,
   radius: 0.48, heroR: 0.8,
   bands: [[1.9, 2.8], [3.4, 5.6], [6.5, 10]], share: [0.4, 0.85], bandMin: [14, 20], bandMax: [18, 30],   // inner ring, second row, outer
