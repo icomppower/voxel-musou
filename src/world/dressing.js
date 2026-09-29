@@ -20,7 +20,7 @@ const frac = (x) => x - Math.floor(x);
 const FOCUS = { value: new THREE.Vector3() };   // the camera's focus (hero), for the reeds' sight line
 
 // ---------------------------------------------------------------- banners
-function bannerTexture(ch, { bg, fg, border, w = 128, h = 256, tatter = true, seed = 1 }) {
+export function bannerTexture(ch, { bg, fg, border, w = 128, h = 256, tatter = true, seed = 1 }) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const g = c.getContext('2d'), r = makeRng(seed);
   g.fillStyle = bg; g.fillRect(0, 0, w, h);
@@ -54,7 +54,7 @@ function bannerTexture(ch, { bg, fg, border, w = 128, h = 256, tatter = true, se
  * kind 'hang' (T-pole standard: top + pole edge attached), 'flag' (pole edge only, streams in the wind),
  * 'drape' (hung flat on a wall, top edge attached).
  */
-function cloth(mat, w, h, kind, ph) {
+export function cloth(mat, w, h, kind, ph) {
   const geo = new THREE.PlaneGeometry(w, h, kind === 'drape' ? 12 : 8, kind === 'flag' ? 6 : 14);
   geo.translate(w / 2, -h / 2, 0);
   const m = new THREE.Mesh(geo, mat);
@@ -63,7 +63,7 @@ function cloth(mat, w, h, kind, ph) {
   return m;
 }
 
-function animateCloth(m, t) {
+export function animateCloth(m, t) {
   const { base, w, h, kind, ph } = m.userData, p = m.geometry.attributes.position.array;
   for (let i = 0; i < p.length; i += 3) {
     const bx = base[i], by = base[i + 1], u = Math.max(0, bx / w), v = Math.max(0, -by / h);
@@ -94,7 +94,7 @@ function animateCloth(m, t) {
 /** Smoke puff: camera-facing quad with a soft billow (overlapping lobes, alpha falling off smoothly to 0 well inside
  * the quad, a lighter upper rim where the low sun catches it). Linear filtered: near the lens a puff stays a soft
  * cloud, never a stack of hard black texels. Instance matrix = position + rotation/scale in the view plane. */
-function smokeMaterial() {
+export function smokeMaterial() {
   const N = 64, cv = document.createElement('canvas'); cv.width = cv.height = N;
   const g = cv.getContext('2d'), img = g.createImageData(N, N);
   const blobs = [[0.5, 0.56, 0.3], [0.34, 0.46, 0.2], [0.66, 0.42, 0.22], [0.48, 0.3, 0.19], [0.6, 0.64, 0.18], [0.38, 0.62, 0.17]];
@@ -123,7 +123,7 @@ function smokeMaterial() {
 }
 
 /** Soft radial glow (white, alpha 0 at the rim) for additive fire halos and ground light pools. */
-function glowTexture() {
+export function glowTexture() {
   const cv = document.createElement('canvas'); cv.width = cv.height = 64;
   const g = cv.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
   for (let k = 0; k <= 10; k++) gr.addColorStop(k / 10, `rgba(255,255,255,${(Math.exp(-((k / 10) ** 2) * 4.5) - Math.exp(-4.5) * k / 10).toFixed(3)})`);   // gaussian, 0 at the rim
@@ -182,7 +182,7 @@ const FLAME_FS = /* glsl */`
 /** list: [x, y, z, scale, smoke = scale ≥ 1.3, gate id]: a gate-linked fire only burns once that gate is open (the
  *  barricade was fired: map.js GATES). update(t). Per fire: 2-3 flame cards + 2 detaching licks (flame shader),
  *  a stream of ember cubes, dark smoke puffs lit from below (big fires), a dim halo and a firelight pool. */
-function fireSystem(scene, list) {
+export function fireSystem(scene, list, top = topAt) {
   const r = makeRng(77);
   const cards = [], embers = [], puffs = [];
   for (const [x, y, z, s, smoke = s >= 1.3, g = null] of list) {
@@ -226,7 +226,7 @@ function fireSystem(scene, list) {
   // per fire: a soft additive halo round the flames (heat + light) and a flickering pool of firelight on the ground
   // under it — both fade out near the lens; the halo is kept dim so a brazier by the hero never blows out the frame
   // (no pool for a fire heaped against a wall — list[6]: a flat plane there only cut a hard orange edge along the wall foot)
-  const glow = glowTexture(), sites = list.map(([x, y, z, s, , g = null, wall = false]) => ({ x, y, z, s, g, wall, ph: r.range(0, 6.28), py: y - topAt(x, z) < 3.2 ? topAt(x, z) : y }));
+  const glow = glowTexture(), sites = list.map(([x, y, z, s, , g = null, wall = false]) => ({ x, y, z, s, g, wall, ph: r.range(0, 6.28), py: y - top(x, z) < 3.2 ? top(x, z) : y }));
   const glowMat = (bb) => {
     const gm = new THREE.MeshBasicMaterial({ map: glow, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide });
     gm.onBeforeCompile = (sh) => {
@@ -303,7 +303,7 @@ function fireSystem(scene, list) {
 const inAt = (x, z) => G.in[node(x, z)];   // walk inside value (m)
 
 /** Palisade of sharpened stakes with two rails along a ground-following polyline [[x, z], …]. */
-function palisade(b, r, pts) {
+export function palisade(b, r, pts) {
   for (let i = 0; i < pts.length - 1; i++) {
     const [ax, az] = pts[i], [bx, bz] = pts[i + 1], L = Math.hypot(bx - ax, bz - az), yaw = Math.atan2(bx - ax, bz - az);
     for (let d = 0; d < L; d += 0.38) {
@@ -327,13 +327,13 @@ function tent(b, x, z, yaw, col, w = 5, d = 6) {
 }
 
 /** Box pusher in a local frame (x across, z along `yaw`) at (x0, y0, z0). */
-const local = (b, x0, y0, z0, yaw) => (lx, ly, lz, s, c, rr = [0, 0, 0]) => {
+export const local = (b, x0, y0, z0, yaw) => (lx, ly, lz, s, c, rr = [0, 0, 0]) => {
   const cs = Math.cos(yaw), sn = Math.sin(yaw);
   b.push({ s, p: [x0 + lx * cs + lz * sn, y0 + ly, z0 - lx * sn + lz * cs], r: [rr[0], yaw + rr[1], rr[2]], c });
 };
 
 /** Supply cart: bed, sides, chunky wheels, shafts, a load of crates and rice sacks (burnt: charred, tipped, no load). */
-function cart(b, r, x, z, yaw, burnt = false) {
+export function cart(b, r, x, z, yaw, burnt = false) {
   const L = local(b, x, ground(x, z), z, yaw), W = burnt ? 0x2a1a10 : 0x5a3d28, D = burnt ? 0x1c120c : 0x3a2618, tip = burnt ? 0.22 : 0;
   L(0, 0.95, 0, [1.8, 0.16, 3.0], W, [0, 0, tip]);
   for (const sx of [-1, 1]) {
@@ -351,7 +351,7 @@ function cart(b, r, x, z, yaw, burnt = false) {
 
 /** A fallen Wei soldier sprawled on his back (head +Z), one arm flung out, legs apart, his spear dropped beside him:
  *  sun-faded armour and the red sash so he reads as a body at gameplay range, not a black plank. Origin on the ground. */
-function fallenGeometry() {
+export function fallenGeometry() {
   const B = (s, p, c, ry = 0, rx = 0) => ({ s, p, c, r: [rx, ry, 0] });
   return boxesGeometry([
     B([0.46, 0.24, 0.6], [0, 0.13, 0.18], 0x5e504a), B([0.36, 0.05, 0.4], [0, 0.26, 0.24], 0x7e6e62), B([0.48, 0.25, 0.09], [0, 0.13, -0.08], 0x8a2a1c),
@@ -365,7 +365,7 @@ function fallenGeometry() {
 }
 
 /** Iron brazier on legs: returns its fire spot. */
-function brazier(b, x, z, s = 0.6) {
+export function brazier(b, x, z, s = 0.6) {
   const gy = ground(x, z);
   for (const [dx, dz] of [[-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]]) b.push({ s: [0.1, 1.0, 0.1], p: [x + dx, gy + 0.5, z + dz], c: 0x2a2624 });
   b.push({ s: [0.95, 0.32, 0.95], p: [x, gy + 1.05, z], c: 0x35302c });
@@ -373,7 +373,7 @@ function brazier(b, x, z, s = 0.6) {
 }
 
 /** War drum (lacquered barrel on a frame, skin toward `yaw`). */
-function drum(b, x, z, yaw, y = ground(x, z)) {
+export function drum(b, x, z, yaw, y = ground(x, z)) {
   const L = local(b, x, y, z, yaw);
   for (const sx of [-1.45, 1.45]) L(sx, 1.6, 0, [0.28, 3.2, 0.28], 0x2e1d15);
   L(0, 3.1, 0, [3.3, 0.26, 0.3], 0x2e1d15);
@@ -394,7 +394,7 @@ function frise(L, lx, ly, lz) {
 
 /** Supply pile: crates (banded lids) and burlap rice sacks (twine tie, slumped top), some thrown on the crates. */
 const SACK = 0x8a7a5c;
-function supplies(b, r, x, z, yaw, n = 6) {
+export function supplies(b, r, x, z, yaw, n = 6) {
   const L = local(b, x, ground(x, z), z, yaw);
   const sackAt = (lx, y, lz, ry, c) => {
     L(lx, y, lz, [0.85, 0.46, 0.6], c, ry); L(lx, y + 0.25, lz, [0.7, 0.08, 0.48], shade(c, 0.92), ry);   // slumped top
@@ -411,7 +411,7 @@ function supplies(b, r, x, z, yaw, n = 6) {
 }
 
 /** Shield rack: a low rail with four round shields leaning on it (red 魏 faces, bronze bosses). */
-function shieldRack(b, r, x, z, yaw) {
+export function shieldRack(b, r, x, z, yaw) {
   const L = local(b, x, ground(x, z), z, yaw);
   L(0, 0.75, 0, [2.6, 0.1, 0.1], 0x3a2618);
   for (const sx of [-1.2, 1.2]) L(sx, 0.4, 0, [0.12, 0.8, 0.12], 0x3a2618);
@@ -461,22 +461,25 @@ function barricade(scene, x, z, yaw, half) {
   return { m, mat, y: gy0 };
 }
 
+// sunlight through the cloth: emissive = the banner's own texture, so 魏/蜀 read even when backlit
+// lensClear (also on the poles / props below): a banner or tent between the lens and the hero blacked out a third of the frame
+// DoubleSide cloth seen from behind showed the glyph mirror-imaged (魏 read backwards): back faces sample the colour
+// with u flipped (the alpha / tattered hem stays put, so the silhouette matches from both sides)
+const unmirror = (m) => {
+  m.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <map_fragment>', 'vec2 bnUv = gl_FrontFacing ? vMapUv : vec2(1.0 - vMapUv.x, vMapUv.y);\ndiffuseColor *= vec4(texture2D(map, bnUv).rgb, texture2D(map, vMapUv).a);')
+      .replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance *= texture2D(emissiveMap, bnUv).rgb;');
+  };
+  return m;
+};
+/** Banner cloth material (bannerTexture map): self-lit by its own dye, glyph never mirrored, faded by the lens. */
+export const bannerMat = (map, alpha = true) => lensClear(unmirror(new THREE.MeshStandardMaterial({ map, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: 0.22, side: THREE.DoubleSide, alphaTest: alpha ? 0.5 : 0, roughness: 0.92, flatShading: true })), 2.5);
+
 export function buildDressing(scene, { castle, fieldFires }) {
   const r = makeRng(44);
   const poles = [], cloths = [], props = [];
-  // sunlight through the cloth: emissive = the banner's own texture, so 魏/蜀 read even when backlit
-  // lensClear (also on the poles / props below): a banner or tent between the lens and the hero blacked out a third of the frame
-  // DoubleSide cloth seen from behind showed the glyph mirror-imaged (魏 read backwards): back faces sample the colour
-  // with u flipped (the alpha / tattered hem stays put, so the silhouette matches from both sides)
-  const unmirror = (m) => {
-    m.onBeforeCompile = (sh) => {
-      sh.fragmentShader = sh.fragmentShader
-        .replace('#include <map_fragment>', 'vec2 bnUv = gl_FrontFacing ? vMapUv : vec2(1.0 - vMapUv.x, vMapUv.y);\ndiffuseColor *= vec4(texture2D(map, bnUv).rgb, texture2D(map, vMapUv).a);')
-        .replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance *= texture2D(emissiveMap, bnUv).rgb;');
-    };
-    return m;
-  };
-  const cm = (map, alpha = true) => lensClear(unmirror(new THREE.MeshStandardMaterial({ map, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: 0.22, side: THREE.DoubleSide, alphaTest: alpha ? 0.5 : 0, roughness: 0.92, flatShading: true })), 2.5);
+  const cm = bannerMat;
   const mats = {
     wei: cm(bannerTexture('魏', { bg: '#7d2a1f', fg: '#1a0d0a', border: '#4a1712', seed: 3 })),
     shu: cm(bannerTexture('蜀', { bg: '#c7a574', fg: '#2a120a', border: '#8e2a1c', w: 192, h: 256, seed: 5 })),

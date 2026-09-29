@@ -19,7 +19,7 @@ export function createResult(el, flow) {
   el.addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
-    if (b.dataset.act === 'retry') leave(() => flow.go('loading', { mode: ctx.mode, char: ctx.char, art: ctx.art, retry: true }));
+    if (b.dataset.act === 'retry') leave(() => flow.go('loading', { mode: ctx.mode, map: ctx.map, char: ctx.char, art: ctx.art, retry: true }));
     else leave(() => flow.go('title'));
   });
   const nav = createNav({

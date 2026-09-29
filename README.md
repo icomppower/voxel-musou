@@ -15,7 +15,7 @@
 | ![Character select](media/select.jpg) | ![Chapter I prologue](media/story.jpg) |
 | Choose your officer | Chapter I 「定軍山」 prologue |
 
-A browser-playable voxel action game in the style of Dynasty Warriors, built with Three.js. Take the field as Zhao Yun (趙雲) with his spear or Huang Zhong (黃忠) with his great bow, and cut through hundreds of Wei soldiers — in the story chapter at Mount Dingjun or in an endless free battle.
+A browser-playable voxel action game in the style of Dynasty Warriors, built with Three.js. Take the field as Zhao Yun (趙雲) with his spear or Huang Zhong (黃忠) with his great bow, and cut through hundreds of Wei soldiers — in the story chapter at Mount Dingjun or in an endless free battle at Mount Dingjun or the Red Cliffs.
 
 No build step: plain ES modules, Three.js r186 vendored in `vendor/three/`, deterministic fixed 60 Hz simulation.
 
@@ -25,8 +25,10 @@ No build step: plain ES modules, Three.js r186 vendored in `vendor/three/`, dete
   - **Zhao Yun** — spear: normal combos (N1–N6), charge attacks (C1–C6), Musou 蒼龍破陣 with a dragon
   - **Huang Zhong** — bow: limb slashes and point-blank shots, charge shots (fan, barrage, arrow rain, fire arrow), aim mode, Musou 百步穿楊 (a flaming volley and a giant arrow)
 - Story mode, Chapter I 「定軍山」: prologue, scripted battle with dialogue, objectives, enemy officers and gates, result screen; play it as either officer (the other one joins the dialogue)
-- Free battle: endless waves
-- Four difficulties, picked after the mode on the title: 初級 · 普通 · 上級 · 修羅 (修羅 opens once Chapter I is cleared on 上級). Grunts stay one-sweep fodder; the tiers turn enemy pressure, officer toughness and the cost of a hit
+- Free battle: endless waves on the battlefield of your choice:
+  - **定軍山 Mount Dingjun** — the Han River ford and the mountain pass below the Wei camp
+  - **赤壁 Red Cliffs** — the shore under the red sandstone cliffs (赤壁 cut into the face), Cao Cao's chained fleet burning on the Yangtze, piers out to the ships, Cao's naval stockade with its command tower, and Wei officers of the river campaign (曹仁, 張遼, 蔡瑁, 張允)
+- Four difficulties, picked after the mode on the title (free battle then asks for the battlefield): 初級 · 普通 · 上級 · 修羅 (修羅 opens once Chapter I is cleared on 上級). Grunts stay one-sweep fodder; the tiers turn enemy pressure, officer toughness and the cost of a hit
 - Jump, jump attack, dodge; hit-stop and impact VFX
 - Dense voxel crowds of Wei soldiers (~300, InstancedMesh) blasted apart into voxel debris, allied Shu troops
 - Enemy officers with name and HP tags
@@ -70,13 +72,15 @@ Keyboard and mouse, or a gamepad.
 | --- | --- |
 | `?enemies=N` | Number of enemy soldiers, 0–2000 (default 300) |
 | `?go=free\|story&char=zhaoyun\|huangzhong` | Skip the menus straight into a battle |
+| `&map=dingjun\|chibi` | With `?go=free`: the battlefield (default `dingjun`) |
 | `?hq` | Pin full render quality (no automatic MSAA downgrade) |
 
 ## Project layout
 
 ```
 index.html      entry point, importmap, all screen CSS
-src/            core, hero, chars (per-character kits), combat, crowd, musou, camera, vfx, post, world, audio,
+src/            core, hero, chars (per-character kits), combat, crowd, musou, camera, vfx, post, world (map.js layouts,
+                Dingjun's set, chibi.js for the Red Cliffs), audio,
                 story (chapter script, prologue, result), ui
 vendor/three/   Three.js r186
 media/          README screenshots and GIF

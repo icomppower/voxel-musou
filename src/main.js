@@ -12,13 +12,16 @@
 // (the bar tracks those real stages), a minimum dwell, then ink on into the prologue / battle — the officer on the field
 // is the chosen one before anything of the field is seen again, and his kit's first draws never stall on screen.
 // Select → loading also snaps the select stage's key-art frame of the officer (snapArt) for the loading card and result.
-// Dev shortcut: ?go=free|story[&char=id] skips the screens straight into a battle.
+// Battlefields (world.js createWorlds): the title / select screens stand on 定軍山; a free battle is fought on the field
+// picked on the title (ctx.map: 'dingjun' | 'chibi'), the story on 定軍山. The swap happens under cover (startBattle
+// under the loading card, the screens under their ink wipe).
+// Dev shortcut: ?go=free|story[&char=id][&map=chibi] skips the screens straight into a battle.
 import * as THREE from 'three';
 import { vrng, rng } from './core/rng.js';
 import { emit, on, collect } from './core/events.js';
 import { createInput } from './core/input.js';
 import { createPost } from './post/post.js';
-import { createWorld } from './world/world.js';
+import { createWorlds } from './world/world.js';
 import { createHero, createHeroView } from './hero/hero.js';
 import { createCrowd } from './crowd/crowd.js';
 import { createCrowdView } from './crowd/view.js';
@@ -28,7 +31,7 @@ import { createVfx } from './vfx/vfx.js';
 import { createHud } from './ui/hud.js';
 import { createAudio } from './audio/audio.js';
 import { CHARS } from './chars/index.js';
-import { spawnPoint } from './world/map.js';
+import { spawnPoint, MAP } from './world/map.js';
 import { createStory } from './story/index.js';
 import { createTitle, CONTROLS } from './ui/title.js';
 import { createSelect } from './ui/select.js';
@@ -46,7 +49,7 @@ let vw = innerWidth, vh = innerHeight;
 
 const post = createPost({ canvas, width: vw, height: vh });
 const scene = new THREE.Scene();
-const world = createWorld(scene);
+const world = createWorlds(scene);
 
 // ---- sim
 // mode: 'free' | 'story' (set by startBattle); the hero's character / kit: game.hero.char / game.hero.kit
@@ -103,9 +106,11 @@ function render(real) {
   hud.update();
 }
 
-/** New battle: { char: CHARS id, mode: 'story' | 'free' }. Resets every sim module (deterministic from
- *  here: both RNGs reseeded, frame 0), rebuilds the kit views on a character change, lets the story spawn the field. */
-function startBattle({ char = 'zhaoyun', mode = 'free' } = {}) {
+/** New battle: { char: CHARS id, mode: 'story' | 'free', map: battlefield id (free only; the story is 定軍山) }. Puts
+ *  the field up, resets every sim module (deterministic from here: both RNGs reseeded, frame 0), rebuilds the kit views
+ *  on a character change, lets the story spawn the field. */
+function startBattle({ char = 'zhaoyun', mode = 'free', map = 'dingjun' } = {}) {
+  world.use(mode === 'story' ? 'dingjun' : map);
   const ch = CHARS[char] || CHARS.zhaoyun, p = spawnPoint(mode), newKit = ch.kit !== game.hero.kit;
   Object.assign(game, { mode, frame: 0, hitstop: 0, freeze: 0, diff: difficulty() });
   lastRenderFrame = 0;
@@ -117,9 +122,9 @@ function startBattle({ char = 'zhaoyun', mode = 'free' } = {}) {
   heroView.reset();
   game.story.reset({ mode, char: ch.id });
   menu.querySelector('.t').innerHTML = `${ch.name.zh}<i>${ch.seal}</i>`;
-  menu.querySelector('.sub').innerHTML = `戰局暫停・${game.diff.zh}<small>Battle paused · ${game.diff.en}</small>`;
+  menu.querySelector('.sub').innerHTML = `戰局暫停・${MAP.name.zh}・${game.diff.zh}<small>Battle paused · ${MAP.name.en} · ${game.diff.en}</small>`;
   document.title = `${ch.name.zh} — Voxel Musou`;
-  emit('scenario', { mode, char: ch.id });
+  emit('scenario', { mode, char: ch.id, map: MAP.id });
 }
 
 addEventListener('resize', () => {
@@ -170,6 +175,7 @@ const flow = {
     if (screens[state]) { screens[state].exit(); $(state).hidden = true; }
     const set = state === 'loading' || state === 'prologue';   // deploy() already started this battle (its field is on screen)
     state = s; ctx = c;
+    if (s === 'title' || s === 'select') world.use('dingjun');   // the key-art stages stand on 定軍山's pass
     if (s === 'battle') { if (!set) startBattle(c); setPaused(false); replay(hudEl, 'in'); }
     else { setPaused(false); hudEl.hidden = true; $(s).hidden = false; screens[s].enter(c); }
     emit('flow', { state: s, ctx: c });
@@ -250,5 +256,5 @@ const frame = (now) => {
 
 const dev = params.get('go');
 // the page opens under full ink (index.html): the first screen is built and compiled under it, then the ink sweeps off
-inkBoot(() => dev ? flow.go('battle', { mode: dev === 'story' ? 'story' : 'free', char: params.get('char') || 'zhaoyun' }) : flow.go('title'));
+inkBoot(() => dev ? flow.go('battle', { mode: dev === 'story' ? 'story' : 'free', char: params.get('char') || 'zhaoyun', map: params.get('map') || 'dingjun' }) : flow.go('title'));
 requestAnimationFrame(frame);
