@@ -4,6 +4,10 @@
 // hero rewards; reactions() runs on the allies too (crowd indices N … T-1).
 // Emits: attack:swing, hit, hits, ko, enemy:land, clash. Hero moves come from the hero's kit (game.hero.kit.moves); a moveId that
 // is not in it (the Musou passes 'musou') skips the hero-move rules (hitstop scaling, lens cut, heavy blow-away).
+// Hero-model actors (src/actors/actors.js, game.actors): every hero hitbox, arrow (hitActor) and Musou window also strikes
+// the foe actors (the boss) — actors.hurt keeps his HP / poise / stagger, here the hero gets his rewards, a `hit` (i -1,
+// actor: key) and the tick's hitstop (the soldiers' victims[] stays theirs). An allied actor's blows, and the boss's on
+// the Shu soldiers, land through npcStrike: a hero blow's reactions, none of his rewards, `clash` per victim.
 //
 // Feel targets (bench/notes/hit-feedback.md):
 // - Hitstop is hero-local and scaled: 1 sf per mook tick + 1 per 5 extra victims (cap 4), 6-8 sf on heavy contact.
@@ -36,6 +40,22 @@ export const COMBAT = {
 };
 const DT = 1 / 60, HALF_PI = Math.PI / 2;
 
+/** Is a body at (x, z) of radius r inside `hit` cast from (ox, oz) facing yaw? Shape only (the caller checks height);
+ *  arcs always take a body closer than 1 m. Also the actors' test (src/actors). */
+export function inShapeAt(hit, ox, oz, yaw, x, z, r) {
+  const dx = x - ox, dz = z - oz;
+  const sn = Math.sin(yaw), cs = Math.cos(yaw);
+  const lz = dx * sn + dz * cs, lx = dx * cs - dz * sn;          // forward, left
+  if (hit.shape === 'line') {
+    const off = hit.off || 0;
+    return lz >= off - r && lz <= off + hit.len + r && Math.abs(lx) <= hit.width / 2 + r;
+  }
+  const d2 = dx * dx + dz * dz, R = hit.range + r;
+  if (d2 > R * R) return false;
+  if (hit.shape === 'circle' || d2 < 1.0) return true;
+  return Math.abs(wrap(Math.atan2(lx, lz) - (hit.dir || 0) * Math.PI / 180)) <= hit.ang * Math.PI / 360;
+}
+
 /** Largest "lying" angle (−π/2 + kπ: on the back / face down) at or below a. */
 const lieBelow = (a) => -HALF_PI + Math.floor((a + HALF_PI + 1e-6) / Math.PI) * Math.PI;
 
@@ -47,6 +67,7 @@ export function createCombat(game) {
   const rxEnd = new Float64Array(game.crowd.T);             // planned lying angle at touchdown
   const victims = new Int32Array(game.crowd.N);
 
+  const clashPayload = { x: 0, y: 0, z: 0, dx: 0, dz: 0, killed: false };
   let lastTick = -1;                                         // a move frame is resolved once, even across hitstop
   let heavyKey = null;                                       // window that already paid its heavy hitstop
   let sweepKey = null;                                       // combo-system r4: sweep window that already paid its hitstop
@@ -56,18 +77,7 @@ export function createCombat(game) {
   /** Is enemy i inside `hit` cast from (ox, oz) facing yaw? */
   function inShape(i, hit, ox, oz, yaw) {
     const c = game.crowd;
-    if (c.y[i] > (hit.yMax ?? COMBAT.yMaxDefault)) return false;
-    const dx = c.x[i] - ox, dz = c.z[i] - oz, r = COMBAT.enemyR;
-    const sn = Math.sin(yaw), cs = Math.cos(yaw);
-    const lz = dx * sn + dz * cs, lx = dx * cs - dz * sn;          // forward, left
-    if (hit.shape === 'line') {
-      const off = hit.off || 0;
-      return lz >= off - r && lz <= off + hit.len + r && Math.abs(lx) <= hit.width / 2 + r;
-    }
-    const d2 = dx * dx + dz * dz, R = hit.range + r;
-    if (d2 > R * R) return false;
-    if (hit.shape === 'circle' || d2 < 1.0) return true;
-    return Math.abs(wrap(Math.atan2(lx, lz) - (hit.dir || 0) * Math.PI / 180)) <= hit.ang * Math.PI / 360;
+    return c.y[i] <= (hit.yMax ?? COMBAT.yMaxDefault) && inShapeAt(hit, ox, oz, yaw, c.x[i], c.z[i], COMBAT.enemyR);
   }
 
   /** Hero hitstop for one tick of `hit` that connected with `count` enemies (musou keeps its own numbers). */
@@ -88,7 +98,7 @@ export function createCombat(game) {
    */
   cb.strike = (hit, ox, oz, yaw, key, rehit, moveId) => {
     const c = game.crowd;
-    let count = 0, sx = 0, sz = 0;
+    let count = 0, sx = 0, sz = 0, na = 0;
     for (let i = 0; i < c.N; i++) {
       const s = c.st[i];
       if (s === ST.OFF || s === ST.DEAD) continue;
@@ -98,23 +108,63 @@ export function createCombat(game) {
       applyHit(i, hit, ox, oz, yaw, moveId);
       victims[count++] = i; sx += c.x[i]; sz += c.z[i];
     }
-    if (count) tickDone(hit, count, sx, sz, key, moveId);
-    return count;
+    for (const a of game.actors.list) {                      // actors lane: the foe hero-model actors (the boss)
+      if (!game.actors.foe(a) || (!rehit && a.lastHit === key) || a.y > (hit.yMax ?? COMBAT.yMaxDefault) || !inShapeAt(hit, ox, oz, yaw, a.x, a.z, a.r)) continue;
+      a.lastHit = key; hurtActor(a, hit, ox, oz, moveId);
+      na++; sx += a.x; sz += a.z;
+    }
+    if (count + na) tickDone(hit, count, sx, sz, key, moveId, false, na);
+    return count + na;
   };
 
   /** After a tick's applyHit()s: hero / victim hitstop and the aggregate `hits` event. far: a ranged hero-move contact
    *  beyond COMBAT.farStop m (hitOne) — the victim keeps its stop, the shooter takes none (DW bows: no shooter freeze on
-   *  distant arrows; the weight is the victim's reaction). */
-  function tickDone(hit, count, sx, sz, key, moveId, far = false) {
-    const c = game.crowd;
-    let hs = heroStop(hit, count, moveId, key);
+   *  distant arrows; the weight is the victim's reaction). na: hero-model actors struck besides the `count` soldiers
+   *  (victims[] holds only soldiers; sx / sz sum over both). */
+  function tickDone(hit, count, sx, sz, key, moveId, far = false, na = 0) {
+    const c = game.crowd, n = count + na;
+    let hs = heroStop(hit, n, moveId, key);
     const vs = heroMove(moveId) ? Math.min(Math.max(hs, hit.sweep ? 2 : 0), COMBAT.victimStopMax) : hs;
     for (let k = 0; k < count; k++) c.hs[victims[k]] = vs;
     if (far && heroMove(moveId)) hs = 0;
     game.hitstop = Math.max(game.hitstop, hs);
-    Object.assign(hitsPayload, { count, x: sx / count, z: sz / count, move: moveId, hitstop: hs, heavy: !!hit.heavy });
+    Object.assign(hitsPayload, { count: n, x: sx / n, z: sz / n, move: moveId, hitstop: hs, heavy: !!hit.heavy });
     emit('hits', hitsPayload);
   }
+
+  /** Hero hit on foe actor a (actors.hurt: HP, poise, stagger, down / retreat): his rewards, a KO when it beat him, the
+   *  `hit` event (i -1, y above ground). */
+  function hurtActor(a, hit, ox, oz, moveId) {
+    let dx = a.x - ox, dz = a.z - oz;
+    const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+    const killed = game.actors.hurt(a, hit.dmg, !!hit.heavy, moveId === 'musou');
+    reward(killed);
+    if (killed) game.hero.kos++;
+    emit('hit', { i: -1, actor: a.key, x: a.x, y: a.y + 1.3 * a.scale, z: a.z, dx, dz, move: moveId, killed, officer: false, heavy: !!hit.heavy });
+  }
+  /** Projectile hook for a foe hero-model actor (projectiles.js sweep): hitOne for actor a. */
+  cb.hitActor = (a, hit, ox, oz, yaw, key, rehit, moveId) => {
+    if (!game.actors.foe(a) || (!rehit && a.lastHit === key)) return false;
+    a.lastHit = key; hurtActor(a, hit, ox, oz, moveId);
+    const h = game.hero;
+    tickDone(hit, 0, a.x, a.z, key, moveId, Math.hypot(a.x - h.x, a.z - h.z) > COMBAT.farStop, 1);
+    return true;
+  };
+
+  /** A hero-model actor's blow on the crowd (src/actors): an allied officer's kit move on the Wei grunts (foe false;
+   *  officers are left to the hero), or the boss's blow on the Shu soldiers (foe true). The reactions of a hero hit, none
+   *  of his rewards (combo, gauge, KO count, hitstop): `clash` per victim, the duel tallies (crowd.allyKos / allyLost).
+   *  key as in strike() (actor keys ≥ 1.5e9), each soldier once per key. Returns the number hit. */
+  cb.npcStrike = (hit, ox, oz, yaw, key, foe) => {
+    const c = game.crowd, i1 = foe ? c.T : c.grunts;
+    let n = 0;
+    for (let i = foe ? c.N : 0; i < i1; i++) {
+      const s = c.st[i];
+      if (s === ST.OFF || s === ST.DEAD || c.lastHit[i] === key || !inShape(i, hit, ox, oz, yaw)) continue;
+      c.lastHit[i] = key; applyHit(i, hit, ox, oz, yaw, 'npc'); c.hs[i] = 2; n++;
+    }
+    return n;
+  };
 
   /**
    * Projectile hook: apply one hit spec to enemy i as if a hitbox cast from (ox, oz) facing yaw had caught it — no shape
@@ -242,9 +292,13 @@ export function createCombat(game) {
         airborne(i, (lift || 4) * k[1], force * k[0], bx, bz, false, 1.2 + flips, sgn * (hit.heavy ? 4 + 4 * var01 : 2.5));
       }
     }
-    // hero rewards
-    h.combo++; h.comboT = COMBAT.comboWindow;
-    if (h.state !== 'musou') h.musou = Math.min(h.musouMax, h.musou + COMBAT.musouPerHit + (killed ? COMBAT.musouPerKO : 0));
+    if (moveId === 'npc') {                                    // an actor's blow (npcStrike): no hero credit
+      Object.assign(clashPayload, { x: c.x[i], y: c.y[i] + 1.1, z: c.z[i], dx, dz, killed });
+      if (killed) { if (i < c.N) c.allyKos++; else c.allyLost++; }
+      emit('clash', clashPayload);
+      return;
+    }
+    reward(killed);
     emit('hit', { i, x: c.x[i], y: c.y[i] + 1.1, z: c.z[i], dx, dz, move: moveId, killed, officer, heavy: !!hit.heavy });
     if (killed) {
       h.kos++;
@@ -252,7 +306,13 @@ export function createCombat(game) {
     }
   }
 
-  const clashPayload = { x: 0, y: 0, z: 0, dx: 0, dz: 0, killed: false };
+  /** Hero rewards for one hit: combo, and Musou gauge (+ a KO bonus) outside the Musou. */
+  function reward(killed) {
+    const h = game.hero;
+    h.combo++; h.comboT = COMBAT.comboWindow;
+    if (h.state !== 'musou') h.musou = Math.min(h.musouMax, h.musou + COMBAT.musouPerHit + (killed ? COMBAT.musouPerKO : 0));
+  }
+
   /** Soldier a's duel blow lands on soldier v (crowd indices, either side) for dmg: a flinch facing the blow, or a KO
    *  throw (blasted ≈ 2 m out, cartwheels, lands lying). Returns true on the KO. */
   cb.clash = (a, v, dmg) => {

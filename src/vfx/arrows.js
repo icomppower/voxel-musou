@@ -285,7 +285,7 @@ export function createArrowView(scene, game, proj, fx) {
       if (e.fire) embers(e.x, e.y, e.z, 5, 2.5, 3, 0.6);
     }
     if (!e.spent) fx.streak(e.x + e.dx * 1.3, e.y + e.dy * 1.3, e.z + e.dz * 1.3, e.dx, e.dy, e.dz, 1.2, 0.06 * k, 0.08, 2.8, 2.2, 1.2, 0.7);   // pierce
-    else if (e.big < 2) {                                                          // pinned in the body
+    else if (e.big < 2 && e.e >= 0) {                                              // pinned in the body (a soldier; e -1: an actor)
       const j = pin.next; pin.next = (pin.next + 1) % NPIN;
       pin.e[j] = e.e; pin.ox[j] = e.x - c.x[e.e] + e.dx * 0.3; pin.oy[j] = e.y - c.y[e.e] + e.dy * 0.3; pin.oz[j] = e.z - c.z[e.e] + e.dz * 0.3;
       pin.dx[j] = e.dx; pin.dy[j] = e.dy; pin.dz[j] = e.dz; pin.t[j] = 0; pin.s[j] = e.big ? 1.7 : 1.25;

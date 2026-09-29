@@ -100,6 +100,10 @@ export function createMusouView(parent, game, camera) {
         const vh = Math.hypot(vx, vz), t = ((game.crowd.x[b] - sx) * vx + (game.crowd.z[b] - sz) * vz) / (vh * vh);
         rf = f; rx = sx + vx * t; ry = sy + vy * t; rz = sz + vz * t;
       }
+      for (const a of game.actors.list) {                        // actors lane: the reticle settles on a boss the path meets
+        if (rf || !game.actors.foe(a) || (x - a.x) ** 2 + (z - a.z) ** 2 > (a.r + 0.75) ** 2 || y < a.y || y > a.y + ARROW.standH * a.scale) continue;
+        rf = f; rx = x; ry = y; rz = z;
+      }
       if (!rf && f === 14) { rf = f; rx = x; ry = y; rz = z; }
       if (f % 2 === 0 && f > 2) {
         const k = 1 - n / ND, s = (0.07 + 0.03 * A.d) * (1 + f / 40);         // grows down range: reads at 20 m

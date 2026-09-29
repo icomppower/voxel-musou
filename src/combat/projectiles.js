@@ -15,6 +15,9 @@
 // (soldier), x,y,z (contact), dx,dy,dz (flight dir), big, fire, spent} (one reused object: read it, never keep it) ·
 // arrow:rain {x, z, r, delay, over (s)} (where and when a rain volley will fall).
 // Render: src/vfx/arrows.js reads the SoA pool (x/y/z, vx/vy/vz, st, t, kind, fire, big) and never writes it.
+// Hero-model actors (src/actors): a foe actor (the boss) is a lock-on target like a soldier — a lock / P.tgt is a soldier
+// index ≥ 0, -1 none, or ≤ -2 an actor (game.actors.list[-2 - t]) — and arrows hit him with the same swept cylinder at his
+// size (combat.hitActor; arrow:hit e = -1).
 import { ST, wrap } from '../crowd/crowd.js';
 import { emit } from '../core/events.js';
 import { hash01 } from '../core/rng.js';
@@ -57,7 +60,8 @@ export function createProjectiles(game) {
     return best;
   }
 
-  /** Nearest live soldier from (x, z) within r whose bearing is inside ±cone of yaw (air: airborne ones win). */
+  /** Nearest live soldier from (x, z) within r whose bearing is inside ±cone of yaw (air: airborne ones win), or a nearer
+   *  foe actor (≤ -2); -1 none. P.aimAt(lock) → its aim point. */
   function lockOn(x, z, yaw, r, cone, air) {
     const c = game.crowd;
     let best = -1, bd = r * r, bestAir = -1, ba = r * r;
@@ -70,9 +74,26 @@ export function createProjectiles(game) {
       if (air && s === ST.AIR && d2 < ba) { ba = d2; bestAir = i; }
       if (d2 < bd) { bd = d2; best = i; }
     }
+    const L = game.actors.list;                              // actors lane: a nearer foe actor wins (encoded -2 - k)
+    for (let k = 0; k < L.length; k++) {
+      const a = L[k], dx = a.x - x, dz = a.z - z, d2 = dx * dx + dz * dz;
+      if (!game.actors.foe(a) || d2 >= bd || Math.abs(wrap(Math.atan2(dx, dz) - yaw)) > cone) continue;
+      bd = d2; best = -2 - k;
+    }
     return bestAir >= 0 ? bestAir : best;
   }
   P.lockOn = lockOn;
+  /** Aim point of lock t (soldier ≥ 0: his chest at 1 m; actor ≤ -2: 1.2 m × his scale; y above ground), null when none /
+   *  gone. One reused object. */
+  const _aim = { x: 0, y: 0, z: 0 };
+  function aimAt(t) {
+    const c = game.crowd;
+    if (t >= 0) { _aim.x = c.x[t]; _aim.y = c.y[t] + 1.0; _aim.z = c.z[t]; return _aim; }
+    const a = t < -1 && game.actors.list[-2 - t];
+    if (!a || !game.actors.foe(a)) return null;
+    _aim.x = a.x; _aim.y = a.y + 1.2 * a.scale; _aim.z = a.z; return _aim;
+  }
+  P.aimAt = aimAt;
 
   /** Launch one arrow. spec = moves.js shot (hit fields + flight fields; head: aim-mode headshot rule); yaw/pitch in rad;
    *  tgt = locked soldier or -1. Returns the pool index (or -1: pool full). */
@@ -96,36 +117,37 @@ export function createProjectiles(game) {
    * rain scheduling. move = kit move id (hero-move rules in combat) or 'musou'. Returns the locked soldier (or -1).
    */
   P.shoot = (spec, move, from) => {
-    const h = game.hero, c = game.crowd;
+    const h = game.hero;
     let yaw = from ? from.yaw : h.yaw;
     const x = from ? from.x : h.x + Math.sin(yaw) * ARROW.ahead, z = from ? from.z : h.z + Math.cos(yaw) * ARROW.ahead;
     const y = from ? from.y : h.y + ARROW.heroY;
     let pitch = (spec.pitch || 0) * D2R;
     const tgt = spec.home ? lockOn(h.x, h.z, yaw, (spec.range || 20) * 0.9, spec.home * D2R, !!spec.air) : -1;
-    if (tgt >= 0 && !spec.sky) {                              // aim at him: bearing, and a flat shot drops onto his chest
-      yaw = Math.atan2(c.x[tgt] - x, c.z[tgt] - z);
+    const tp = aimAt(tgt), tx = tp ? tp.x : 0, ty = tp ? tp.y : 0, tz = tp ? tp.z : 0;
+    if (tp && !spec.sky) {                                    // aim at him: bearing, and a flat shot drops onto his chest
+      yaw = Math.atan2(tx - x, tz - z);
       // fx r5: the drop is spread over ≥ 5.4 m (≈ −4° on the flat) — a lock < 2 m dove the shot (−15…−40°) into the
       // ground 1.5-5 m out: the heavy shot's force line was buried half-way and seen end-on from the gameplay lens, and
       // no in-flight beam ever drew; flatter, it still meets a point-blank chest (≈ 1.3 m up) and flies on through the
       // rank behind. A distance floor, not a pitch floor: a lock down a slope still aims down it
-      if (!spec.pitch) pitch = Math.atan2(c.y[tgt] + 1.0 - y, Math.max(5.4, Math.hypot(c.x[tgt] - x, c.z[tgt] - z)));
+      if (!spec.pitch) pitch = Math.atan2(ty - y, Math.max(5.4, Math.hypot(tx - x, tz - z)));
     }
     let lock = tgt;
     if (spec.groundAim) {                                     // drive it into the ground at the target (or groundAim m ahead)
-      let d = tgt >= 0 ? Math.min(12, Math.hypot(c.x[tgt] - x, c.z[tgt] - z)) : spec.groundAim;
+      let d = tp ? Math.min(12, Math.hypot(tx - x, tz - z)) : spec.groundAim;
       if (d < 5) { d = 5; lock = -1; }                        // fx r2: never at his feet — a point-blank burst buried him in his own fireball
       pitch = -Math.atan2(y, Math.max(2, d)) + (spec.g || 0) * d / (2 * spec.speed * spec.speed);
     }
     const n = spec.n || 1, sp = (spec.spread || 0) * D2R, d0 = (spec.dir || 0) * D2R;
     for (let k = 0; k < n; k++) {
       const a = yaw + d0 + (n > 1 ? (k / (n - 1) - 0.5) * sp : 0);
-      spawn(x, y, z, a, pitch, spec, move, n > 1 && tgt >= 0 ? -1 : lock);   // a fan does not converge on one man
+      spawn(x, y, z, a, pitch, spec, move, n > 1 && tp ? -1 : lock);   // a fan does not converge on one man
     }
     if (spec.rain) {                                          // skyward volley → a circle of arrows falls round the target
       const R = spec.rain, s0 = seq;
       let cx, cz;
-      const t2 = lockOn(h.x, h.z, h.yaw, R.reach, 50 * D2R, false);
-      if (t2 >= 0) { cx = c.x[t2]; cz = c.z[t2]; } else { cx = h.x + Math.sin(h.yaw) * R.ahead; cz = h.z + Math.cos(h.yaw) * R.ahead; }
+      const t2 = aimAt(lockOn(h.x, h.z, h.yaw, R.reach, 50 * D2R, false));
+      if (t2) { cx = t2.x; cz = t2.z; } else { cx = h.x + Math.sin(h.yaw) * R.ahead; cz = h.z + Math.cos(h.yaw) * R.ahead; }
       const rs = { ...spec, sky: false, drop: true, rain: null, pierce: 0, rad: 0.45, speed: 34, range: 60, home: 0 };
       const ls = { ...rs, kb: 'launch', heavy: true, dmg: spec.dmg * 1.6 };
       for (let k = 0; k < R.n; k++) {
@@ -138,7 +160,7 @@ export function createProjectiles(game) {
       emit('arrow:rain', { x: cx, z: cz, r: R.r, delay: R.delay / 60, over: R.over / 60 });
     }
     emit('arrow:fire', { x, y, z, yaw, pitch, spread: sp, n, heavy: !!spec.heavy, fire: !!spec.fire, big: spec.big || 0, sky: !!spec.sky, move,
-      reach: tgt >= 0 ? Math.hypot(c.x[tgt] - x, c.z[tgt] - z) : 0 });   // r5: locked soldier's distance (heavy line length)
+      reach: tp ? Math.hypot(tx - x, tz - z) : 0 });          // r5: locked soldier's distance (heavy line length)
     return tgt;
   };
 
@@ -208,19 +230,31 @@ export function createProjectiles(game) {
           emit('arrow:headshot', { i: e, x: c.x[e], y: ey + 1.6, z: c.z[e] });
         }
         if (!game.combat.hitOne(e, hit, x0 + dx * u - Math.sin(yaw) * 0.5, z0 + dz * u - Math.cos(yaw) * 0.5, yaw, P.key[i], false, P.move[i])) continue;   // refused (KO'd this tick): no pierce spent
-        const spent = --P.pierce[i] < 0, vl = Math.hypot(P.vx[i], P.vy[i], P.vz[i]) || 1;
-        const H = hitEv;
-        H.a = i; H.e = e; H.x = x0 + dx * u; H.y = ay; H.z = z0 + dz * u; H.dx = P.vx[i] / vl; H.dy = P.vy[i] / vl; H.dz = P.vz[i] / vl;
-        H.big = P.big[i]; H.fire = P.fire[i]; H.spent = spent && !s.burst;
-        emit('arrow:hit', hitEv);
-        if (spent) {
-          if (s.burst) burst(i, c.x[e], c.z[e]);
-          else P.st[i] = AS.NONE;
-          return false;
-        }
+        if (!landed(i, e, x0 + dx * u, ay, z0 + dz * u, c.x[e], c.z[e])) return false;
       }
     }
+    for (const a of game.actors.list) {                      // actors lane: the foe actors, a cylinder of their size
+      if (!game.actors.foe(a) || a.lastHit === P.key[i]) continue;
+      const Ra = a.r + (s.rad || 0.3), u = Math.max(0, Math.min(1, ((a.x - x0) * dx + (a.z - z0) * dz) / L2));
+      const px = x0 + dx * u - a.x, pz = z0 + dz * u - a.z, ay = y0 + (y1 - y0) * u;
+      if (px * px + pz * pz > Ra * Ra || ay < a.y - (s.rad || 0.3) || ay > a.y + ARROW.standH * a.scale + (s.rad || 0.3)) continue;
+      if (!game.combat.hitActor(a, setHit(one, s), x0 + dx * u - Math.sin(yaw) * 0.5, z0 + dz * u - Math.cos(yaw) * 0.5, yaw, P.key[i], false, P.move[i])) continue;
+      if (!landed(i, -1, x0 + dx * u, ay, z0 + dz * u, a.x, a.z)) return false;
+    }
     return true;
+  }
+  /** Arrow i struck body e (soldier index, -1 an actor) at (x, y, z): spend a pierce, arrow:hit; spent → burst at (bx, bz)
+   *  or gone. Returns false when the arrow is spent. */
+  function landed(i, e, x, y, z, bx, bz) {
+    const s = P.spec[i], spent = --P.pierce[i] < 0, vl = Math.hypot(P.vx[i], P.vy[i], P.vz[i]) || 1;
+    const H = hitEv;
+    H.a = i; H.e = e; H.x = x; H.y = y; H.z = z; H.dx = P.vx[i] / vl; H.dy = P.vy[i] / vl; H.dz = P.vz[i] / vl;
+    H.big = P.big[i]; H.fire = P.fire[i]; H.spent = spent && !s.burst;
+    emit('arrow:hit', hitEv);
+    if (!spent) return true;
+    if (s.burst) burst(i, bx, bz);
+    else P.st[i] = AS.NONE;
+    return false;
   }
 
   P.step = () => {
@@ -242,11 +276,11 @@ export function createProjectiles(game) {
       const s = P.spec[i];
       // soft-lock homing: curve toward the locked soldier's chest while he is still ahead of the arrow
       const tg = P.tgt[i];
-      if (tg >= 0 && P.t[i] <= P.life[i]) {
-        const ts = c.st[tg];
-        if (ts === ST.OFF || ts === ST.DEAD) P.tgt[i] = -1;
+      if (tg !== -1 && P.t[i] <= P.life[i]) {
+        const ts = tg >= 0 ? c.st[tg] : ST.IDLE, ap = tg < 0 && aimAt(tg);   // (an actor lock: aimAt, null once beaten)
+        if (ts === ST.OFF || ts === ST.DEAD || (tg < 0 && !ap)) P.tgt[i] = -1;
         else {
-          const wx = c.x[tg] - P.x[i], wy = c.y[tg] + (ts === ST.AIR ? 0.3 : 1.0) - P.y[i], wz = c.z[tg] - P.z[i];
+          const wx = (ap ? ap.x : c.x[tg]) - P.x[i], wy = (ap ? ap.y : c.y[tg] + (ts === ST.AIR ? 0.3 : 1.0)) - P.y[i], wz = (ap ? ap.z : c.z[tg]) - P.z[i];
           const v = Math.hypot(P.vx[i], P.vy[i], P.vz[i]), w = Math.hypot(wx, wy, wz) || 1;
           const cos = (P.vx[i] * wx + P.vy[i] * wy + P.vz[i] * wz) / (v * w);
           if (cos > 0.3) {                                    // still in front: bend up to homeTurn toward him

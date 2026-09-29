@@ -66,7 +66,8 @@ function spring(s, to, w, dt) {
   s.x = to + (d + t) * e; s.v = (s.v - w * t) * e;
 }
 
-/** Yaw that faces the nearest live officer within targetR of the hero, or his facing (recenter behind him). */
+/** Yaw that faces the nearest live officer (a crowd officer or a foe hero-model actor: the boss) within targetR of the
+ *  hero, or his facing (recenter behind him). */
 function targetYaw(game) {
   const c = game.crowd, h = game.hero;
   let best = CAM.targetR * CAM.targetR, yaw = h.yaw;
@@ -75,6 +76,10 @@ function targetYaw(game) {
     if (!c.type[i] || st === ST.OFF || st === ST.DEAD) continue;
     const dx = c.x[i] - h.x, dz = c.z[i] - h.z, d2 = dx * dx + dz * dz;
     if (d2 < best && d2 > 0.25) { best = d2; yaw = Math.atan2(dx, dz); }
+  }
+  for (const a of game.actors.list) {
+    const dx = a.x - h.x, dz = a.z - h.z, d2 = dx * dx + dz * dz;
+    if (game.actors.foe(a) && d2 < best && d2 > 0.25) { best = d2; yaw = Math.atan2(dx, dz); }
   }
   return yaw;
 }

@@ -1,4 +1,4 @@
-// Boot, flow and the fixed 60 Hz loop. Sim modules (hero, combat, crowd, musou, story, camera control yaw) advance only
+// Boot, flow and the fixed 60 Hz loop. Sim modules (hero, combat, crowd, actors, pickups, musou, story, camera control yaw) advance only
 // in step(); render-side modules read sim state in render() and never write it.
 // Flow: title → select → loading → (story: prologue →) battle → result → title. Each non-battle state is a DOM screen (index.html
 // #title #select #loading #prologue #result, modules below: createX(el, flow) → { enter(ctx), exit(), view? }; view(scene, camera,
@@ -30,6 +30,9 @@ import { createCrowd } from './crowd/crowd.js';
 import { createCrowdView } from './crowd/view.js';
 import { armyPair, FREE_ARMY } from './crowd/armies.js';
 import { createCombat } from './combat/combat.js';
+import { createActors } from './actors/actors.js';
+import { createActorsView } from './actors/view.js';
+import { createPickups, createPickupsView } from './actors/pickups.js';
 import { createCamSim, createCameraRig } from './camera/camera.js';
 import { createVfx } from './vfx/vfx.js';
 import { createHud } from './ui/hud.js';
@@ -65,6 +68,8 @@ game.cam = createCamSim();
 game.hero = createHero(game);
 game.crowd = createCrowd(game, ENEMIES);
 game.combat = createCombat(game);
+game.actors = createActors(game);                 // hero-model NPCs: the boss, allied officers (src/actors, CONTRACTS C5)
+game.pickups = createPickups(game);               // 肉包 heals dropped by officers / every 40th grunt
 game.musou = game.hero.kit.createMusou(game);     // the character's Musou (rebuilt with the kit in startBattle)
 game.story = createStory(game);
 const input = createInput();
@@ -73,6 +78,9 @@ const input = createInput();
 let crowdView = createCrowdView(scene, game);          // rebuilt when the battle's army pair changes (startBattle)
 const camRig = createCameraRig(game, vw, vh);
 const vfx = createVfx(scene, game, world);
+// actor models are built on spawn and shown once compiled (post.compile: parallel, no stall mid-battle)
+const actorsView = createActorsView(scene, game, () => post.compile(scene, camRig.camera));
+const pickupsView = createPickupsView(scene, game);
 // kit views (hero model + chains + ghosts, Musou grade/dragon/cut-in): rebuilt when the character's kit changes
 let heroView, musouView, dropViews = null;
 function buildViews() {
@@ -90,6 +98,7 @@ function step() {
   game.hero.step(inp);
   game.combat.step();
   game.crowd.step();
+  game.actors.step(); game.pickups.step();
   game.musou.step();
   game.story.step();
   game.frame++;
@@ -102,8 +111,10 @@ function render(real) {
   const dt = real ?? Math.min(10, Math.max(0, (game.frame - lastRenderFrame) / 60));
   lastRenderFrame = game.frame;
   heroView.root.visible = state !== 'title' && state !== 'select';   // no officer chosen yet: the field stands empty
+  actorsView.root.visible = pickupsView.root.visible = heroView.root.visible;
   heroView.update(Math.min(dt, 0.1));
   crowdView.update(dt, camRig.camera);
+  actorsView.update(dt); pickupsView.update();
   vfx.update(dt);
   camRig.update(dt);
   screens[state]?.view?.(scene, camRig.camera, camRig.focus, dt);   // ui lane: a screen may frame the idle field itself
@@ -134,6 +145,7 @@ function startBattle({ char = 'zhaoyun', mode = 'free', ch, map } = {}) {
   game.crowd.reset(); game.combat.reset(); game.musou.reset();
   if (newKit) buildViews();
   heroView.reset();
+  game.actors.reset(); game.pickups.reset();                                              // C5
   game.story.reset({ mode, char, ch });                                                    // C2
   menu.querySelector('.t').innerHTML = `${who.name.zh}<i>${who.seal}</i>`;
   menu.querySelector('.sub').innerHTML = `戰局暫停・${game.diff.zh}<small>Battle paused · ${game.diff.en}</small>`;
