@@ -12,6 +12,7 @@
 // Menu: 第一章「定軍山」 / 自由演武 → the difficulty panel in place of the menu (初級 普通 上級 修羅 + a card: the tier's line and
 // 敵勢 / 敵將 / 傷害 pips; 修羅 shows its unlock rule while locked, core/difficulty.js), confirm → select {mode} (the story);
 // 自由演武 goes on to the battlefield panel (定軍山 / 赤壁 + a card with the field's line), confirm → select {mode, map}.
+// 赤壁之戰 is the same free battle with the field already chosen: difficulty → select {mode, map: 'chibi'}.
 // Esc steps back a panel · 操作說明 → controls panel (Esc back).
 // Mouse: hover highlights an item, click activates it.
 // Screen contract: createTitle(el, flow) → { enter(ctx), exit(), view } (src/main.js header).
@@ -32,6 +33,7 @@ export const SWASH = `<svg class="swash" viewBox="0 0 400 26" preserveAspectRati
 const ITEMS = [
   { go: 'story', zh: '第一章「定軍山」', en: 'Story · Chapter I, Mount Dingjun' },
   { go: 'free', zh: '自由演武', en: 'Free battle · endless waves' },
+  { go: 'free', map: 'chibi', zh: '赤壁之戰', en: 'Free battle · Red Cliffs' },   // straight to the new field (skips the 戰場 panel)
   { go: 'controls', zh: '操作說明', en: 'Controls' },
 ];
 // free-battle battlefields (map.js layouts), in menu order: the card's line under the name
@@ -110,7 +112,7 @@ export function createTitle(el, flow) {
   const $ = (s) => el.querySelector(s), btns = [...el.querySelectorAll('.t-main button')], dbtns = [...el.querySelectorAll('.t-dif button')];
   const sbtns = [...el.querySelectorAll('.t-stg button')];
   const tags = [...el.querySelectorAll('.t-tag')];
-  let cur = 0, pre = true, ctl = false, busy = false, dcur = 1, dmode = null;   // dmode: the mode picked, while the difficulty panel is up
+  let cur = 0, pre = true, ctl = false, busy = false, dcur = 1, dmode = null, dmap = null;   // dmap: a field picked on the menu itself   // dmode: the mode picked, while the difficulty panel is up
   let scur = 0, smode = false;                          // smode: the battlefield panel is up (free battle, after the difficulty)
 
   const focus = (i, quiet) => {
@@ -171,6 +173,7 @@ export function createTitle(el, flow) {
       const d = DIFFS[dcur], mode = dmode;
       if (!unlocked(d)) return sfx('back');
       setDifficulty(d);
+      if (mode === 'free' && dmap) { busy = true; stamp(dbtns[dcur], '決'); return setTimeout(() => inkWipe(() => flow.go('select', { mode, map: dmap })), 380); }
       if (mode === 'free') { sfx('ok'); return setStg(true); }   // free battle: pick the battlefield next
       busy = true;
       stamp(dbtns[dcur], '決');
@@ -178,7 +181,7 @@ export function createTitle(el, flow) {
     }
     const it = ITEMS[cur];
     if (it.go === 'controls') { sfx('ok'); return setCtl(true); }
-    sfx('ok'); setDif(it.go);
+    sfx('ok'); dmap = it.map || null; setDif(it.go);
   };
   const back = () => {
     if (busy) return;
