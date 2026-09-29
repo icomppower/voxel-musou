@@ -1,7 +1,7 @@
 // Hero-model actors (render-only): every actor of game.actors (sim: src/actors/actors.js) drawn with its kit's voxel model
 // and cloth / hair chains on its own rig (as the title / select stage does, ui/stage.js), posed each render from the
 // actor's sim anim state (the kit's clips / run pose, a 0.1 s cross-fade on every clip change), scaled HERO_SCALE ×
-// kit.scale × actor.scale about the feet and lifted onto ground(); a red flash when struck, a slow red pulse while a boss
+// (kit.scale || HERO_SCALE) × actor.scale about the feet and lifted onto ground(); a red flash when struck, a slow red pulse while a boss
 // is enraged, a backward topple when he falls. A new actor's model is compiled through `compile` (main.js: post.compile,
 // KHR_parallel_shader_compile) and only shown once its programs are ready, so a spawn mid-battle never stalls a frame.
 // Telegraph decals: each boss attack's warning, read straight from its sim state (so it fills in sim frames and holds
@@ -46,7 +46,7 @@ export function createActorsView(scene, game, compile) {
   scene.add(group);
 
   function build(a) {
-    const K = a.kit, root = new THREE.Group(), rig = createRig();
+    const K = a.kit, root = new THREE.Group(), rig = createRig(K);
     root.add(rig.root); group.add(root);
     const m = K.model(rig);
     const v = { a, K, root, rig, m, sec: K.secondary(root, rig, m.material), from: new Float32Array(POSE_SIZE),
@@ -69,8 +69,8 @@ export function createActorsView(scene, game, compile) {
     if (v.blend < 1) { v.blend = Math.min(1, v.blend + dt * 10); const u = v.blend; blendPose(v.from, P, u * u * (3 - 2 * u), P); }
     v.last.set(P);
     rig.root.scale.set(1, 1, 1); rig.root.rotation.x = 0;
-    rig.apply(P, pos.set(a.x, a.y + ground(a.x, a.z), a.z), a.yaw);
-    rig.root.scale.setScalar(HERO_SCALE * (K.scale || 1) * a.scale);
+    rig.apply(P, pos.set(a.x, a.y + ground(a.x, a.z), a.z), a.yaw, a.y);
+    rig.root.scale.setScalar((K.scale || HERO_SCALE) * a.scale);
     if (a.state === 'down') { const u = Math.min(1, a.stT / 36); rig.root.rotation.x = -1.45 * u * u; }   // topples onto his back
     rig.root.updateMatrixWorld(true);
     // struck: red flash; enraged boss: a slow red pulse (emissive of the kit's body material)

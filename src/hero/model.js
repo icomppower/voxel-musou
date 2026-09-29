@@ -74,26 +74,27 @@ export function vox(boxes, v = V, { off = [0, 0, 0], jitter = 0.05, ao = 0.42 } 
   return vb.build();
 }
 
-// ---------------------------------------------------------------- authoring helpers (voxel units)
-const B = (a, b, c, paint) => ({ a, b, c, paint });
-const md = (a, m) => ((a % m) + m) % m;
-const P = (a, b, c) => ({ a, b, c, paint: true });
+// ---------------------------------------------------------------- authoring helpers (voxel units; shared with src/chars/*)
+export const B = (a, b, c, paint) => ({ a, b, c, paint });
+export const md = (a, m) => ((a % m) + m) % m;
+export const P = (a, b, c) => ({ a, b, c, paint: true });
 /** Mirror a box for the right side (parts authored with +x = outward); c2 = 2 × mirror plane (1 for off −0.5 parts). */
-const mirX = (bx, sx, c2 = 0) => (sx > 0 ? bx : { ...bx, a: [c2 - bx.b[0], bx.a[1], bx.a[2]], b: [c2 - bx.a[0], bx.b[1], bx.b[2]] });
+export const mirX = (bx, sx, c2 = 0) => (sx > 0 ? bx : { ...bx, a: [c2 - bx.b[0], bx.a[1], bx.a[2]], b: [c2 - bx.a[0], bx.b[1], bx.b[2]] });
 
 /**
  * Lamellar armour: a volume made of horizontal rows (rowH voxels tall) of small plates (pw voxels wide, staggered per row,
  * one dark seam voxel between plates). Each row's lowest voxel is a bright lip that sticks out by one voxel on x and z
  * (the rows overlap like scales; AO darkens under every lip) and the voxel tucked under the next lip is shaded, so every
  * row reads as plates with dark gaps. `trim` colours the lip of the lowest row; `jag` knocks out every 3rd voxel of it.
+ * lipX / lipZ = false: the lips stay flush on that axis (a skirt panel, a plate against the body).
  */
-export function lamellar(a, b, { base = C.W, rowH = 3, pw = 4, trim = null, jag = false, lipX = true } = {}) {
+export function lamellar(a, b, { base = C.W, rowH = 3, pw = 4, trim = null, jag = false, lipX = true, lipZ = true } = {}) {
   const out = [], dark = shade(base, 0.6), tuck = shade(base, 0.8), hi = shade(base, 1.04);
   const seam = (x, y, z) => md(x + z + (Math.floor((y - a[1]) / rowH) & 1) * (pw >> 1), pw) === 0;
   out.push(B(a, b, (x, y, z) => (seam(x, y, z) ? dark : (y - a[1]) % rowH === rowH - 1 ? tuck : base)));
   for (let y = a[1]; y < b[1]; y += rowH) {
     const bottom = y === a[1];
-    out.push(B([a[0] - (lipX ? 1 : 0), y, a[2] - 1], [b[0] + (lipX ? 1 : 0), y + 1, b[2] + 1],
+    out.push(B([a[0] - (lipX ? 1 : 0), y, a[2] - (lipZ ? 1 : 0)], [b[0] + (lipX ? 1 : 0), y + 1, b[2] + (lipZ ? 1 : 0)],
       (x, yy, z) => (bottom && jag && md(x + z, 3) === 0 ? null : bottom && trim != null ? trim : seam(x, yy, z) ? dark : hi)));
   }
   return out;
@@ -265,7 +266,7 @@ function bladeGeo() {
   return vox(boxes, bv, { jitter: 0.03, ao: 0.2 });
 }
 
-// ---------------------------------------------------------------- material
+// ---------------------------------------------------------------- materials
 /**
  * Hero-only lighting on top of the scene lights (the camera usually sees his back, which the low sun leaves in shade):
  * a soft cool fill from the camera's upper left and a warm Fresnel rim on faces seen edge-on. Split-toned like the
@@ -295,9 +296,22 @@ export function bodyParts(pal) {
   return { parts: limbs(torso(pal), pal), pauldron: (sx) => pd[sx > 0 ? 1 : 0] };
 }
 
+/** The three hero materials: body (vertex-coloured voxels + heroLook), metal (gold / iron fittings), blade (bright steel). */
+function heroMats() {
+  // integration r1: albedo × 0.8 so the ivory lamellar keeps its scale rows under the environment's light + post-fx grade
+  // (at 1.0 the armour clipped to flat white)
+  return {
+    body: heroLook(new THREE.MeshStandardMaterial({ color: new THREE.Color(0.8, 0.8, 0.8), vertexColors: true, roughness: 0.58, metalness: 0.08, flatShading: true })),
+    metal: heroLook(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0.55, flatShading: true }), 0.25, 0.6),
+    blade: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.22, metalness: 0.65, flatShading: true, emissive: 0xcfe4ff, emissiveIntensity: 0.32 }),
+  };
+}
+
 /** Meshes a body (bodyParts) and its head boxes onto the rig, one mesh per joint. → { meshes, add(parent, geo, name, m) }
- *  (add: the character's weapon and extras, into the same meshes). */
-export function buildBody(rig, mat, { parts, pauldron }, headBoxes) {
+ *  (add: the character's weapon and extras, into the same meshes). bv / hv: body / head voxel size; a fine body (bv set:
+ *  src/chars/parts.js FV) is authored centred on its joints (no odd-width offset). pauldron(sx) may be absent (no
+ *  pauldrons, no helper joints) or return [] (none on that side). */
+export function buildBody(rig, mat, { parts, pauldron }, headBoxes, { bv, hv = HV } = {}) {
   const meshes = {};
   const add = (parent, geo, name, m = mat) => {
     const mesh = new THREE.Mesh(geo, m);
@@ -307,31 +321,38 @@ export function buildBody(rig, mat, { parts, pauldron }, headBoxes) {
     return mesh;
   };
   for (const [joint, boxes] of Object.entries(parts)) {
-    const odd = /foreArm|thigh|shin/.test(joint);                    // odd-width parts: centre them
-    add(rig.joints[joint], vox(boxes, V, { off: odd ? [-0.5, 0, -0.5] : [0, 0, 0] }), joint);
+    const odd = !bv && /foreArm|thigh|shin/.test(joint);            // odd-width parts: centre them
+    add(rig.joints[joint], vox(boxes, bv || V, { off: odd ? [-0.5, 0, -0.5] : [0, 0, 0], jitter: bv ? 0.035 : 0.05 }), joint);
   }
-  add(rig.joints.head, vox(headBoxes, HV, { off: [-0.5, 0, 0], jitter: 0.04 }), 'head');
+  add(rig.joints.head, vox(headBoxes, hv, { off: [-0.5, 0, 0], jitter: 0.04 }), 'head');
   // pauldrons ride on a helper under each shoulder; secondary.js turns it halfway with the upper arm
-  for (const [s, sx] of [['R', -1], ['L', 1]]) {
-    const pd = new THREE.Object3D();
+  if (pauldron) for (const [s, sx] of [['R', -1], ['L', 1]]) {
+    const pd = new THREE.Object3D(), boxes = pauldron(sx);
     pd.name = 'pauldron' + s;
     rig.joints['shoulder' + s].add(pd);
     rig.joints['pauldron' + s] = pd;
-    add(pd, vox(pauldron(sx), V), 'pauldron' + s);
+    if (boxes.length) add(pd, vox(boxes, bv || V), 'pauldron' + s);   // (vox([]) throws: an empty side has no mesh)
   }
   return { meshes, add };
 }
 
+/**
+ * A def-built officer (src/chars/defkit.js): built = { parts: {joint: boxes}, head: boxes, bv, hv (voxel sizes, see
+ * buildBody), pauldron?: (sx) → boxes, weapon: [{ geo, mat: 'body' | 'metal' | 'blade' | Material }] } — weapon geometry
+ * sits on the weapon joint (shaft +Z, origin = the rear grip), meshes named weapon0..n. → { meshes, material, blade (the
+ * blade material: a kit may heat its emissive) }
+ */
+export function buildDef(rig, built) {
+  const M = heroMats(), { meshes, add } = buildBody(rig, M.body, built, built.head, built);
+  built.weapon.forEach((w, i) => add(rig.joints.weapon, w.geo, 'weapon' + i, typeof w.mat === 'string' ? M[w.mat] : w.mat));
+  return { meshes, material: M.body, blade: M.blade };
+}
+
 export function createHeroModel(rig) {
-  // integration r1: albedo × 0.8 so the ivory lamellar keeps its scale rows under the environment's light + post-fx grade
-  // (at 1.0 the armour clipped to flat white)
-  const mat = heroLook(new THREE.MeshStandardMaterial({ color: new THREE.Color(0.8, 0.8, 0.8), vertexColors: true, roughness: 0.58, metalness: 0.08, flatShading: true }));
-  const { meshes, add } = buildBody(rig, mat, bodyParts(C), head());
+  const M = heroMats(), { meshes, add } = buildBody(rig, M.body, bodyParts(C), head());
   const [shaft, collar] = spearGeo();
   add(rig.joints.weapon, shaft, 'spear');
-  add(rig.joints.weapon, collar, 'collar', heroLook(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0.55, flatShading: true }), 0.25, 0.6));
-  add(rig.joints.weapon, bladeGeo(), 'blade', new THREE.MeshStandardMaterial({
-    vertexColors: true, roughness: 0.22, metalness: 0.65, flatShading: true, emissive: 0xcfe4ff, emissiveIntensity: 0.32,
-  }));
-  return { meshes, material: mat };
+  add(rig.joints.weapon, collar, 'collar', M.metal);
+  add(rig.joints.weapon, bladeGeo(), 'blade', M.blade);
+  return { meshes, material: M.body };
 }

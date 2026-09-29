@@ -26,7 +26,7 @@ export function stagePoint(v, which) {
 
 /** Officer `id` on its own rig under `parent`: { K (kit), root, rig, m (kit.model result), sec (chains), fresh }. */
 export function standOfficer(id, parent) {
-  const K = CHARS[id].kit, root = new THREE.Group(), rig = createRig();
+  const K = CHARS[id].kit, root = new THREE.Group(), rig = createRig(K);
   root.add(rig.root); parent.add(root);
   const m = K.model(rig);
   return { K, root, rig, m, sec: K.secondary(root, rig, m.material), fresh: true };
@@ -36,7 +36,7 @@ export function standOfficer(id, parent) {
 export function poseOfficer(o, pose, p, yaw, dt) {
   o.rig.root.scale.set(1, 1, 1);
   o.rig.apply(pose, p, yaw);
-  o.rig.root.scale.setScalar(HERO_SCALE); o.rig.root.updateMatrixWorld(true);
+  o.rig.root.scale.setScalar(o.K.scale || HERO_SCALE); o.rig.root.updateMatrixWorld(true);
   if (o.fresh) { o.sec.reset(); o.fresh = false; }
   o.sec.update(dt);
 }

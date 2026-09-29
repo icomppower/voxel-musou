@@ -25,7 +25,7 @@ export const DIM = {
 
 /** Uniform view scale of the posed hero (≈ 1.85 m). The rig poses and solves IK at scale 1 in pose units; hero.js then
  *  scales the root about the ground point, so feet stay planted and hands stay on the shaft. World-space readers of
- *  pose channels (spearWorld, spearElev) apply it. */
+ *  pose channels (spearWorld, spearElev) apply it. A kit may set its own `scale` (a bigger officer); this is the default. */
 export const HERO_SCALE = 1.08;
 
 export const CH = {
@@ -173,16 +173,17 @@ export function blendStep(a, b, w, out, dx, dz) {
 }
 
 // ---------------------------------------------------------------- ground contact
-const GROUND = 0.03, TIP = 2.0, BUTT = 0.8;            // clearance, blade tip / butt cap distance from the rear grip
+const GROUND = 0.03, REACH = { tip: 2.0, butt: 0.8 };   // clearance; Zhao Yun's blade tip / butt cap distance from the rear grip
 /**
  * Spear elevation after ground contact: when the blade tip (or the butt) would go below the ground, the spear pivots
  * about the rear grip until it rests on the ground — slams and plunges strike the floor instead of sinking into it.
- * Pure (pose channels + root height), so the renderer and the VFX trail agree.
+ * Pure (pose channels + the root's height above the ground under it, h), so the renderer and the VFX trail agree.
+ * K = the kit: its weapon's `reach` {tip, butt} (m from the rear grip, default REACH) and body `scale`.
  */
-function spearElev(pose, rootY) {
+function spearElev(pose, h, K) {
   let e = pose[29];
-  const y0 = pose[26] + (rootY - GROUND) / HERO_SCALE;           // grip height above the clearance plane, pose units
-  for (const [len, sgn] of [[BUTT, -1], [TIP, 1]]) {            // tip last: it wins if both can't be satisfied
+  const R = K?.reach || REACH, y0 = pose[26] + (h - GROUND) / (K?.scale || HERO_SCALE);   // grip height above the clearance plane, pose units
+  for (const [len, sgn] of [[R.butt, -1], [R.tip, 1]]) {        // tip last: it wins if both can't be satisfied
     const s = -y0 / len * sgn;                           // tip: sin e >= s · butt: sin e <= -s
     if (sgn > 0 ? Math.sin(e) >= s : Math.sin(e) <= s) continue;
     if (Math.abs(s) >= 1) continue;
@@ -241,7 +242,8 @@ function reachOnShaft(S, O, D, s0, r) {
   return Math.min(Math.max(s0, -b - q), -b + q);
 }
 
-export function createRig() {
+/** K = the kit posed on it (weapon ground contact: spearElev). */
+export function createRig(K) {
   const j = {};
   const mk = (name, parent, x = 0, y = 0, z = 0) => {
     const o = new THREE.Object3D();
@@ -275,8 +277,9 @@ export function createRig() {
   const rig = {
     joints: j,
     root: j.root,
-    /** Pose the rig. pos = world position of the root (ground under the hero), yaw = facing. */
-    apply(pose, pos, yaw) {
+    /** Pose the rig. pos = world position of the root (ground under the hero), yaw = facing, h = the root's height above
+     *  the ground under it (sim y: the weapon's ground contact). */
+    apply(pose, pos, yaw, h = 0) {
       const R = j.root;
       R.position.copy(pos); R.rotation.set(0, yaw + pose[38], 0);
       j.hips.position.set(pose[0], pose[1], pose[2]);
@@ -286,7 +289,7 @@ export function createRig() {
       // head aim is root-space: cancel the torso chain's pitch/yaw (approximate; eulers are not additive)
       j.head.rotation.set(pose[12] - pose[3] - pose[6] - pose[9], pose[13] - pose[4] - pose[7] - pose[10], pose[14]);
       j.weapon.position.set(pose[25], pose[26], pose[27]);
-      j.weapon.rotation.set(-spearElev(pose, pos.y - ground(pos.x, pos.z)), pose[28], pose[30]);   // clamp height: above the ground, not world y
+      j.weapon.rotation.set(-spearElev(pose, h, K), pose[28], pose[30]);
       for (const s of ['R', 'L']) {
         j['upperArm' + s].quaternion.identity(); j['foreArm' + s].quaternion.identity();
         j['thigh' + s].quaternion.identity(); j['shin' + s].quaternion.identity();
@@ -360,17 +363,17 @@ export function createRig() {
   return rig;
 }
 
-/** Spear base/tip in world space for a pose (pure; no rig needed). Used by VFX trails. */
-export function spearWorld(pose, pos, yaw, zBase, zTip, outBase, outTip) {
-  weaponWorld(pose, pos, yaw, 0, 0, zBase, outBase);
-  weaponWorld(pose, pos, yaw, 0, 0, zTip, outTip);
+/** Spear base/tip in world space for a pose (pure; no rig needed). Used by VFX trails. pos is in sim space (y = height
+ *  above the ground); K = the kit (reach, scale). */
+export function spearWorld(pose, pos, yaw, zBase, zTip, outBase, outTip, K) {
+  weaponWorld(pose, pos, yaw, 0, 0, zBase, outBase, K);
+  weaponWorld(pose, pos, yaw, 0, 0, zTip, outTip, K);
 }
 
-/** A point (lx, ly, lz m) of the weapon frame in world space (pure). The bow's limbs run along local y (VFX trails).
- *  pos.y is the height above ground (sim space, the ground clamp's plane): the VFX lift the result at draw. */
-export function weaponWorld(pose, pos, yaw, lx, ly, lz, out) {
-  _e.set(-spearElev(pose, pos.y), pose[28], pose[30]); _q.setFromEuler(_e);
+/** A point (lx, ly, lz m) of the weapon frame in world space (pure). The bow's limbs run along local y (VFX trails). */
+export function weaponWorld(pose, pos, yaw, lx, ly, lz, out, K) {
+  _e.set(-spearElev(pose, pos.y, K), pose[28], pose[30]); _q.setFromEuler(_e);
   const cy = Math.cos(yaw + pose[38]), sy = Math.sin(yaw + pose[38]);
-  _v.set(lx, ly, lz).applyQuaternion(_q).add(_v2.set(pose[25], pose[26], pose[27])).multiplyScalar(HERO_SCALE);
+  _v.set(lx, ly, lz).applyQuaternion(_q).add(_v2.set(pose[25], pose[26], pose[27])).multiplyScalar(K?.scale || HERO_SCALE);
   return out.set(pos.x + _v.x * cy + _v.z * sy, pos.y + _v.y, pos.z - _v.x * sy + _v.z * cy);
 }

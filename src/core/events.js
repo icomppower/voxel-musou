@@ -39,8 +39,12 @@
 //  musou:hit     musou    {x,y,z, stage, yaw, n}                        one hit tick; stage 'contact' (first mass hit, 2.2 s)
 //                                                                       | 'front' (contact shock front rolling through the crowd)
 //                                                                       | 'dragon' (at the dragon head) | 'rush' | 'wave' (on the ring)
-//  musou:burst   musou    {count, x,z}                                  finisher: the ring wave starts at Zhao Yun
+//  musou:burst   musou    {count, x,z}                                  finisher: the ring wave starts at the hero
 //  musou:end     musou    {}
+//  musou:fx      musou    {kind, r, x,y,z, yaw}                         a scripted Musou beat's effect (roar crack aura slam
+//                                                                       rocks …: musou/scripted.js; drawn by chars/kitview.js)
+//  wave:launch   musou    {x,y,z, yaw, n, kind, move}                   flat waves leave the hero (a `proj` window or a scripted
+//                                                                       Musou; kind crescent | wind | ring | roar)
 //  crowd:wave    crowd    {x,z}                                         reinforcements spawned
 //  crowd:allies  crowd    {x,z}                                         an ally column spawned (runs up the road behind the hero)
 //  story:say     story    {speaker, zh, en, dur, portrait, side}        dialogue line (HUD, top left). speaker: {zh, en} name

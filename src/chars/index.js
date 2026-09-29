@@ -25,14 +25,23 @@
 //   dashPlant          dash move frame where the lunge lands (footstep dust), or -1
 //   model(rig) → { material, meshes }            voxel model on the shared rig (src/hero/rig.js)
 //   secondary(scene, rig, material, hero?) → { update(dt), reset() }   cloth / hair chains (hero: the battle view's)
-//   trail              weapon ribbon {base, baseHeavy, tip} (m along the rig's weapon, vfx.js spearWorld) or null = none
+//   trail              weapon ribbon {base, baseHeavy, tip} (m along the rig's weapon, vfx.js spearWorld) or a bow limb
+//                      {axis: 'y', …} (never null)
+//   fx?                vfx.js palette (complete: spread vfx.js ZY_FX; musou 'dragon' | 'own', ghost, mu — vfx.js header)
+//   scale?, reach?     body scale (default rig.js HERO_SCALE), weapon ground contact {tip, butt} (rig.js spearElev)
+//   weight?            camera kick × (camera.js)            voice?  {pitch, fk, growl, gain} his kiai (audio/bank.js)
+//   view?(model, hero, dt, rig)   per-frame render hook after IK (hero.js createHeroView)
 //   createMusou(game) → musou sim (interface: src/musou/musou.js createMusou — active, t, reset, start(inp),
-//                      stepHero(inp), shot(), ready(), step(), optional aimShot() (camera.js aim shot); emits musou:* events;
-//                      hits via game.combat.strike(..., 'musou'))
+//                      stepHero(inp), shot(), ready(), step(), optional aimShot() (camera.js aim shot), wave(hit, moveId)
+//                      (moves.js `proj` windows: src/musou/scripted.js); emits musou:* events; hits via
+//                      game.combat.strike(..., 'musou'))
 //   createMusouView(scene, game, camera) → { update(dt), dispose() }   render-only
 // }
+// Officers written as data (a model def + a moveset) get their kit from src/chars/defkit.js (its header: the def contract).
 import { ZHAOYUN_KIT } from './zhaoyun/kit.js';
 import { HUANGZHONG_KIT } from './huangzhong/kit.js';
+import { ZHANGFEI_KIT } from './zhangfei/kit.js';
+import { FACE as ZF_FACE, PAL as ZF_PAL } from './zhangfei/model.js';
 
 const ZY_FACE = [
   '....................',
@@ -119,8 +128,27 @@ export const CHARS = {
     portrait: { face: HZ_FACE, pal: PAL },
     kit: HUANGZHONG_KIT,
   },
+  zhangfei: {
+    id: 'zhangfei',
+    name: { zh: '張飛', en: 'Zhang Fei' }, courtesy: { zh: '翼德', en: 'Yide' }, seal: '燕人',
+    title: { zh: '萬人之敵', en: 'A Match for Ten Thousand' }, motto: '燕人張翼德 · 當陽一喝 · 萬夫莫當',
+    weapon: { zh: '丈八蛇矛', en: 'Eighteen-Foot Serpent Spear' },
+    bio: {
+      zh: ['涿郡人，豹頭環眼，燕頷虎鬚，聲若巨雷。', '長坂橋頭橫矛一喝，曹軍百萬無人敢近。'],
+      en: ['A man of Zhuo with a leopard\'s head, round glaring eyes and a tiger\'s bristling beard; his voice is thunder.',
+        'Alone on the bridge at Changban he levelled his spear and roared — and Cao Cao\'s host dared not come on.'],
+    },
+    stats: { atk: 5, def: 4, speed: 2, range: 4 }, musou: { zh: '燕人咆哮', en: 'Roar of the Man of Yan' }, accent: '#d4552a',
+    lines: {
+      intro: { zh: '燕人張翼德在此！誰敢與我決一死戰？', en: 'Zhang Yide of Yan stands here! Who dares fight me to the death?' },
+      musouEnd: { zh: '戰又不戰，退又不退，卻是何故！', en: 'You will not fight, you will not flee — what are you waiting for?!' },
+      copy: ['一聲咆哮', '萬軍倒退'],
+    },
+    portrait: { face: ZF_FACE, pal: ZF_PAL },
+    kit: ZHANGFEI_KIT,
+  },
 };
-export const CHAR_ORDER = ['zhaoyun', 'huangzhong'];
+export const CHAR_ORDER = ['zhangfei', 'zhaoyun', 'huangzhong'];   // campaign order: liubei guanyu zhangfei zhaoyun zhugeliang huangzhong lubu
 
 /** Paint a char's 20×20 portrait into a canvas (width/height 20; scale it with CSS, image-rendering: pixelated). */
 export function paintPortrait(cv, char) {

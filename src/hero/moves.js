@@ -23,7 +23,10 @@
 //            hitstop (frames), every (re-hit interval inside the window, 0 = once), yMax (air reach), heavy,
 //            pillars / rocks: count of gold light pillars / boulders the vfx raises when this heavy circle window opens,
 //            sweep: ±1 resolve the window in swing order (+1 right → left, −1 left → right; a circle starts at dir + 180°
-//            for −1): the sector grows from the start side over sweepN frames (default: the window), one hero hitstop }]
+//            for −1): the sector grows from the start side over sweepN frames (default: the window), one hero hitstop,
+//            proj: { count, spread° (≥ 360 = a ring), speed m/s, life frames, r m, y m, kind } = a wave window: no
+//            shape, it launches flat waves (combat.js → game.musou.wave, src/musou/scripted.js) that strike as they fly,
+//            roar / beam / rain: drawn by the kit's own view (src/chars/kitview.js) instead of the default heavy volume }]
 // }
 //
 // Reach (N1–N6): hit ranges follow the spear tip's sweep in anims/attacks.js (tip ≈ 2.1–2.3 m from the hero, N4's

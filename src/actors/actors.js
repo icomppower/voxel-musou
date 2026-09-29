@@ -8,7 +8,7 @@
 //   step()
 //   spawn(key, def) → actor def = { kit: CHARS id | a kit object, role: 'boss' | 'ally' | 'npc', at: {x, z} | [x, z], yaw (default:
 //                           facing the hero), hp (boss: × game.diff.officerHp), name {zh, en}, seal (red seal glyphs), poise,
-//                           attacks (default: kit.bossAttacks, else SPEAR), scale (× kit.scale × HERO_SCALE), retreatAt
+//                           attacks (default: kit.bossAttacks, else SPEAR), scale (× the kit body scale: kit.scale, else HERO_SCALE), retreatAt
 //                           (HP fraction where a boss breaks off instead of falling), intro {zh, en} (HUD spawn banner),
 //                           invuln (default: every role but the boss) }. A key already on the field is replaced.
 //   get(key) → actor | null the live record (read it, never write it): { key, role, x, z, y (above ground), yaw, hp, hpMax,
