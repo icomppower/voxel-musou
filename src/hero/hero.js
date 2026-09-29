@@ -33,6 +33,7 @@ export function createHero(game) {
   /** Called by combat when an enemy strike connects. Any attack move armours against grunts; officers need `armor`. */
   h.hurt = (dmg, fromX, fromZ, officer) => {
     if (h.dead || h.iframes > 0 || h.state === 'musou' || h.state === 'dodge') return false;
+    dmg = Math.round(dmg / h.defK);                           // defK: story buff (story/index.js reset / buff), 1 otherwise
     h.hp = Math.max(game.mode === 'story' ? 0 : 1, h.hp - dmg);   // free mode: the hero cannot die (the demo keeps running)
     h.musou = Math.min(h.musouMax, h.musou + dmg * 0.15);
     const armored = !!h.move && h.move !== 'aim' && (!officer || h.kit.moves[h.move].armor);   // aim: a stance, not a swing

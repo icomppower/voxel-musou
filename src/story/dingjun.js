@@ -1,30 +1,23 @@
-// 第一章「定軍山」 — chapter data: speakers, the battle script (BEATS), the prologue cards and the epilogue.
+// 第四章「定軍山」 — chapter data (format: ./chapters.js header): metadata, speakers, the battle script (BEATS), the
+// prologue cards over the 漢中 ink map (PL_MAP) and the epilogue.
 // History (219 AD, 漢中之戰): 劉備 camps at 陽平關; 法正 counsels seizing the heights of 定軍山; 夏侯淵 holds the
 // mountain, 張郃 the eastern lines; 黃忠 storms the heights and cuts down 夏侯淵 (老當益壯); 趙雲 later saves 黃忠 at
 // 漢水 and holds the empty camp (空營計). Played as either officer: `hero` = the chosen one, `ally` = the other one,
 // who appears in the dialogue with his pixel portrait (chars/index.js). Everyone else speaks under a seal portrait.
-//
-// Script shape (DW8 story battles): a linear list of beats. The director (index.js) fires beat k once its `when`
-// holds, and only after beat k-1 fired, so running ahead or doubling back can never reorder or skip the script.
-//   when   trigger (object: every key must hold) or [trigger, ...] (any one holds). Keys:
-//            wait: n    sim frames since the previous beat        kos: n    hero KOs since the previous beat
-//            zone: id   hero reached that zone (z ≥ its near edge: the field runs along +Z, see world/map.js)
-//            at: P      hero reached the z of a position P         down: key   that officer was KO'd
-//            below: [key, f]   that officer's HP fraction < f (true once he is KO'd, too)
-//   skip   trigger: when it holds as the beat comes up, the beat is dropped (a line that no longer makes sense)
-//   say    dialogue lines, queued (one at a time, each held ~4-5 s like DW8)
-//   obj    new objective { zh, en, go: officer key | P } (go = where the HUD objective arrow points)
-//   banner { html, en, dur?, big? }   system band (big: the officer-slain / chapter banners)
-//   squads [{ at: P, n, charge?, cols? }]   officers { key: { at: P, name, hp, boss?, engaged? } }
-//   waves  reinforcement columns on/off   limit  { z: P | null, nag: line }   the hero can't pass that z (sequence gate)
-//   hush   drop dialogue still queued (a stage just fell: its officer's taunts are stale)
-//   heal f (fraction of max HP; DW's 肉包 on a stage clear)   morale ±d   retire (free idle grunts far behind)
-//   gate   open a map gate: 'pass' | 'weiCamp' | 'summit' (world/map.js GATES; all closed at a story start)
-//   win    the chapter's victory beat (slow-mo, then the result screen)
-// A position P = [zone id, fx, fz]: fractions of the zone's half width / half depth (radius) from its centre, so the
-// script follows the map lane's zone table instead of hard geometry; ['gate', dx, dz] = metres from the camp gate.
-// Line = { who, zh, en } or { who, huangzhong: [zh, en], zhaoyun: [zh, en] } (branch on the hero).
-//   who: 'hero' | 'ally' | a SPK key.
+// Map gates (world/map.js GATES): 'pass' barricade, 'weiCamp' castle gate, 'summit' barricade — all shut at the start.
+// ['gate', dx, dz] = metres from the camp gate (the map's 'gate' anchor).
+
+export const CH = {
+  id: 'dingjun', num: { zh: '第四章', en: 'CHAPTER IV' }, title: { zh: '定軍山', en: 'Mount Dingjun' },
+  seal: '漢中之戰', era: { zh: '建安二十四年', en: '219 AD' }, map: 'dingjun',
+  heroes: ['huangzhong', 'zhaoyun'],
+  ally: { huangzhong: 'zhaoyun', zhaoyun: 'huangzhong' },
+  army: { foe: 'wei', ally: 'shu' },
+  // the van drawn up either side of the road inside the 本陣 gate, holding rank until the hero marches past
+  van: [{ x: -5.575, z: -121.6, n: 12, cols: 4, hold: true }, { x: 5.575, z: -121.6, n: 12, cols: 4, hold: true }],
+  hq: [4, 208],                                    // 夏侯淵's pavilion on the summit
+  rank: { kos: [600, 1200, 2000], time: [540, 720, 900] },   // tuned to the pacing note above BEATS
+};
 
 export const SPK = {
   liubei: { name: { zh: '劉備', en: 'Liu Bei' }, seal: '劉', side: 'shu' },
@@ -53,7 +46,7 @@ const NAG_GATE = { who: 'fazheng', zh: '營門緊閉，須先擊破守將張郃�
 // Pacing (default difficulty): a scripted bot that attacks nonstop and never dodges clears in ≈ 6 min with ≈ 3200 KOs
 // (ford 45 s · pass + ambush 60 s · gate duel 90 s · camp and climb 35 s · summit 2.5 min) and ~250 damage taken; a
 // human reading the dialogue and steering lands at ≈ 9-13 min. Officers only come forward after the hero has fought a
-// while (kos / wait), so rushing shortens a stage but never skips one. Rank thresholds: index.js rank().
+// while (kos / wait), so rushing shortens a stage but never skips one. Rank thresholds: CH.rank.
 export const BEATS = [
   // ---- 蜀軍本陣: briefing, then the ford
   {
@@ -198,9 +191,38 @@ export const BEATS = [
   },
 ];
 
-// ---- prologue (prologue.js): ink-scroll cards over the 漢中 map. cols: vertical calligraphy columns (right to left);
-// show: map marks drawn in on this card (arrows animate in, labels light up); focus: map point + zoom the view drifts to.
-// A card may branch on the hero: { huangzhong: {cols, en}, zhaoyun: {cols, en}, show, focus }.
+// ---- prologue ink map of 漢中 (viewBox 1600×900): the ranges, 定軍山, 漢水, places and troop arrows
+const peaks = (list, h, w) => list.map(([x, y, k = 1]) =>
+  `<path d="M${x - w * k} ${y} Q${x - w * k * 0.35} ${y - h * k * 0.55} ${x} ${y - h * k} Q${x + w * k * 0.3} ${y - h * k * 0.5} ${x + w * k} ${y}Z"/>`).join('');
+const RIVER = 'M-20 360 C180 330 300 420 460 430 S760 360 920 420 S1220 470 1380 420 S1560 400 1620 430';
+export const PL_MAP = {
+  art: `<g class="pl-mtns" fill="url(#pl-mtn)" filter="url(#pl-ink)">
+    ${peaks([[90, 190, 1.1], [210, 170], [330, 200, 1.2], [470, 160, .9], [600, 190, 1.1], [760, 170], [900, 185, 1.2], [1060, 160], [1200, 190, 1.1], [1350, 170, .9], [1500, 195, 1.2]], 120, 90)}
+    ${peaks([[120, 900, 1.2], [300, 880], [480, 905, 1.1], [820, 890, .9], [1000, 905, 1.2], [1180, 885], [1380, 900, 1.1], [1540, 890]], 130, 100)}
+    ${peaks([[250, 330, .7], [340, 318, .8]], 110, 70)}
+  </g>
+  <g class="pl-mark" data-id="dingjun" fill="url(#pl-mtn)" filter="url(#pl-ink)">${peaks([[560, 640, .9], [640, 620, 1.35], [730, 645, .85]], 150, 80)}</g>
+  <g class="pl-mark" data-id="river" filter="url(#pl-ink)" fill="none" stroke-linecap="round">
+    <path d="${RIVER}" stroke="#6f7c78" stroke-width="30" opacity=".35"/><path d="${RIVER}" stroke="#46524f" stroke-width="7" opacity=".7"/>
+  </g>
+  <g class="pl-labels">
+    <g class="pl-mark" data-id="yangping"><rect x="276" y="286" width="30" height="30" rx="3"/><text x="330" y="312">陽平關</text></g>
+    <g class="pl-mark" data-id="nanzheng"><rect x="1042" y="282" width="36" height="36" rx="3"/><text x="1034" y="350">南鄭</text></g>
+    <g class="pl-mark wei" data-id="dingjun"><text x="600" y="690">定軍山</text><text class="sm" x="686" y="520">夏侯淵</text></g>
+    <g class="pl-mark wei" data-id="east"><text class="sm" x="880" y="650">張郃 東圍</text></g>
+    <g class="pl-mark" data-id="river"><text class="sm river" x="190" y="412">漢 水</text></g>
+  </g>`,
+  arrows: [
+    ['shu1', 'shu', 'M150 880 C185 720 250 520 292 342'],
+    ['wei1', 'wei', 'M1040 330 C930 370 810 450 712 548'],
+    ['wei2', 'wei', 'M1060 350 C1040 450 990 540 930 590'],
+    ['shu2', 'shu', 'M318 338 C390 400 440 480 530 612'],
+    ['shu3', 'shu', 'M540 652 C570 616 596 574 626 536'],
+    ['shu4', 'shu', 'M668 520 C780 420 900 340 1020 318'],
+  ],
+};
+
+// ---- prologue cards (format: chapters.js). Card 4 branches on the hero.
 export const PROLOGUE = [
   { cols: ['建安二十四年春', '劉備親率大軍北上', '屯兵陽平關'], en: 'Spring, 219 AD. Liu Bei marches north and makes camp at Yangping Pass.',
     show: ['shu1', 'yangping'], focus: [360, 470, 1.22] },

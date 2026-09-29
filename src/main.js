@@ -3,7 +3,10 @@
 // Flow: title → select → loading → (story: prologue →) battle → result → title. Each non-battle state is a DOM screen (index.html
 // #title #select #loading #prologue #result, modules below: createX(el, flow) → { enter(ctx), exit(), view? }; view(scene, camera,
 // focus, dt) = optional render-only camera/stage hook run after the gameplay rig while that screen is up); the sim only steps in
-// 'battle' and not paused (Esc: pause menu #menu). startBattle() resets the sim for a character / mode.
+// 'battle' and not paused (Esc: pause menu #menu). startBattle() resets the sim for a character / mode / chapter.
+// ctx through the flow: title → select { mode, ch, map } (story: ch = the chapter, story/chapters.js; free: ch = the
+// battlefield's chapter, map = its field) → loading / prologue / battle { mode, ch, map, char, art?, retry? } → result
+// (+ win, stats, reason?, diff, unlock?, first?) → title (+ ch after a win: the chapter panel opens on the next chapter).
 // flow.go() returns a promise that settles once the new state's materials are compiled and two frames have presented
 // (menu.js inkWipe holds the ink until then; the page boots under it, inkBoot). Every screen change but prologue →
 // battle (its own fade onto the live field) goes through the ink wipe; the HUD slides in on each battle entry (#hud.in).
@@ -14,7 +17,8 @@
 // Select → loading also snaps the select stage's key-art frame of the officer (snapArt) for the loading card and result.
 // Maps: startBattle loads the battle's map (world.load: in-page, under the loading card / ink); the title and select
 // always stand on HOME (flow.go('title') swaps back under the ink and clears the last battle's soldiers).
-// Dev shortcut: ?go=free|story[&char=id][&map=id] skips the screens straight into a battle.
+// Dev shortcut: ?go=free|story[&char=id][&ch=chapter id][&map=map id] skips the screens straight into a battle (story
+// without &ch: the first chapter that lists the officer).
 import * as THREE from 'three';
 import { vrng, rng } from './core/rng.js';
 import { emit, on, collect } from './core/events.js';
@@ -34,13 +38,14 @@ import { CHARS } from './chars/index.js';
 import { spawnPoint, MAP } from './world/map.js';
 import { HOME } from './world/maps/index.js';
 import { createStory } from './story/index.js';
+import { CHAPTERS, chapter } from './story/chapters.js';
 import { createTitle, CONTROLS } from './ui/title.js';
 import { createSelect } from './ui/select.js';
 import { createLoading } from './ui/loading.js';
 import { inkWipe, inkBoot, wiping, createNav, sfx, replay } from './ui/menu.js';
 import { createPrologue } from './story/prologue.js';
 import { createResult } from './story/result.js';
-import { difficulty, recordClear } from './core/difficulty.js';
+import { difficulty, recordClear, cleared } from './core/difficulty.js';
 
 const params = new URLSearchParams(location.search);
 const ENEMIES = Math.max(0, Math.min(2000, params.get('enemies') ? Number(params.get('enemies')) | 0 : 300));
@@ -108,29 +113,32 @@ function render(real) {
   hud.update();
 }
 
-/** New battle: { char: CHARS id, mode: 'story' | 'free', map: maps/index.js id (free mode; default HOME) }. Loads the
- *  map (no-op if it is up), resets every sim module (deterministic from here: both RNGs reseeded, frame 0), rebuilds
- *  the kit views on a character change, lets the story spawn the field. */
-function startBattle({ char = 'zhaoyun', mode = 'free', map } = {}) {
-  world.load(mode === 'story' ? HOME : map || HOME, { army: game.army });   // C1 (C2: the chapter's map)
-  const ch = CHARS[char] || CHARS.zhaoyun, p = spawnPoint(mode), newKit = ch.kit !== game.hero.kit;
-  // C3 armies — A2: armyPair(C ? C.CH.army : FREE_ARMY) once chapters land (story = 定軍山's 魏 / 蜀 until then)
-  const prev = game.army; game.army = armyPair(mode === 'story' ? { foe: 'wei', ally: 'shu' } : FREE_ARMY);
+/** New battle: { char: CHARS id, mode: 'story' | 'free', ch: chapter id (story), map: maps/index.js id (free; default
+ *  HOME) }. Sets the armies, loads the map (no-op if it is up), resets every sim module (deterministic from here: both
+ *  RNGs reseeded, frame 0), rebuilds the kit views on a character change, lets the story spawn the field. */
+function startBattle({ char = 'zhaoyun', mode = 'free', ch, map } = {}) {
+  const C = mode === 'story' ? chapter(ch) : null;                                        // C2
+  const who = CHARS[char] || CHARS.zhaoyun, newKit = who.kit !== game.hero.kit;
+  char = who.id; ch = C?.CH.id; map = C ? C.CH.map : map || HOME;                          // C2: resolved ids
+  const prev = game.army; game.army = armyPair(C ? C.CH.army : CHAPTERS.find((m) => m.CH.map === map)?.CH.army ?? FREE_ARMY);              // C3
   if (game.army.foe !== prev.foe || game.army.ally !== prev.ally) { crowdView.dispose(); crowdView = createCrowdView(scene, game); }
+  world.load(map, { army: game.army });                                                    // C1
+  map = MAP.id;
+  const p = C ? C.CH.start ?? spawnPoint('story') : spawnPoint('free');                   // C2
   Object.assign(game, { mode, frame: 0, hitstop: 0, freeze: 0, diff: difficulty() });
   lastRenderFrame = 0;
   vrng.seed(7936); rng.seed(1);
-  game.hero.reset({ ...p, char: ch });
-  if (newKit) game.musou = ch.kit.createMusou(game);
+  game.hero.reset({ ...p, char: who });
+  if (newKit) game.musou = who.kit.createMusou(game);
   game.cam.reset(p.yaw); game.cam.tilt = p.tilt || 0;           // first: crowd.reset takes the allies' front from the camera yaw
   game.crowd.reset(); game.combat.reset(); game.musou.reset();
   if (newKit) buildViews();
   heroView.reset();
-  game.story.reset({ mode, char: ch.id });
-  menu.querySelector('.t').innerHTML = `${ch.name.zh}<i>${ch.seal}</i>`;
+  game.story.reset({ mode, char, ch });                                                    // C2
+  menu.querySelector('.t').innerHTML = `${who.name.zh}<i>${who.seal}</i>`;
   menu.querySelector('.sub').innerHTML = `戰局暫停・${game.diff.zh}<small>Battle paused · ${game.diff.en}</small>`;
-  document.title = `${ch.name.zh} — Voxel Musou`;
-  emit('scenario', { mode, char: ch.id, map: MAP.id });
+  document.title = `${who.name.zh} — Voxel Musou`;
+  emit('scenario', { mode, char, ch, map });
 }
 
 addEventListener('resize', () => {
@@ -194,7 +202,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** Compile every material in the scene (hidden pools included) for this camera, in parallel where the GPU has
  *  KHR_parallel_shader_compile, then let two frames present: the screen's first draws don't stall. */
 async function warm() {
-  screens[state]?.view?.(scene, camRig.camera, camRig.focus, 0);   // a screen's stage (select: every officer's model) exists now
+  screens[state]?.view?.(scene, camRig.camera, camRig.focus, 0);   // a screen's stage (select: the focused officer's model) exists now
   await post.compile(scene, camRig.camera);
   await nextFrame(); await nextFrame();
 }
@@ -234,10 +242,11 @@ const screens = {
   title: createTitle($('title'), flow), select: createSelect($('select'), flow), loading: createLoading($('loading')),
   prologue: createPrologue($('prologue'), flow), result: createResult($('result'), flow),
 };
-// a win records the clear (上級 / 修羅 opens 修羅: unlock = the result screen announces it)
+// a win records the chapter's clear + best rank (first: a first clear, the next chapter opened; unlock: 上級 / 修羅
+// opened 修羅 — the result screen announces both); reason: a fail beat's defeat line
 on('story:end', (e) => {
-  const unlock = e.win && recordClear(game.diff);
-  inkWipe(() => flow.go('result', { ...ctx, win: e.win, stats: e.stats, diff: game.diff, unlock }));
+  const first = e.win && !cleared(ctx.ch), unlock = e.win && recordClear(game.diff, ctx.ch, e.stats.rank);
+  inkWipe(() => flow.go('result', { ...ctx, win: e.win, stats: e.stats, reason: e.reason, diff: game.diff, unlock, first }));
 });
 addEventListener('keydown', (e) => {
   // opens; the menu's own nav (registered first) closes it and marks the key handled
@@ -262,5 +271,7 @@ const frame = (now) => {
 
 const dev = params.get('go');
 // the page opens under full ink (index.html): the first screen is built and compiled under it, then the ink sweeps off
-inkBoot(() => dev ? flow.go('battle', { mode: dev === 'story' ? 'story' : 'free', char: params.get('char') || 'zhaoyun', map: params.get('map') || undefined }) : flow.go('title'));
+const devChar = params.get('char') || 'zhaoyun';
+const devCh = chapter(params.get('ch') || CHAPTERS.find((m) => m.CH.heroes.includes(devChar))?.CH.id).CH.id;
+inkBoot(() => dev ? flow.go('battle', { mode: dev === 'story' ? 'story' : 'free', char: devChar, ch: devCh, map: params.get('map') || undefined }) : flow.go('title'));
 requestAnimationFrame(frame);

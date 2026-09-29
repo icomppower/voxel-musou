@@ -1,31 +1,23 @@
-// Chapter prologue (#prologue): a handscroll unrolls over a sepia ink map of 漢中; each card writes 3 vertical brush
-// columns (right to left, revealed stroke-first by a ragged brush-tip mask), an English subline, and draws its troop
-// arrows onto the map (蜀 teal ink, 魏 vermilion) while the view drifts to the card's focus. Then the chapter title
-// stamps in (「第一章 定軍山」 + the red 漢中之戰 seal) and the battle starts.
+// Chapter prologue (#prologue): a handscroll unrolls over the chapter's sepia ink map (CH PL_MAP); each card writes 3
+// vertical brush columns (right to left, revealed stroke-first by a ragged brush-tip mask), an English subline, and draws
+// its troop arrows onto the map (ours teal ink, the foe vermilion) while the view drifts to the card's focus. Then the
+// chapter title stamps in (CH num + title + the red CH seal) and the battle starts.
 // Controls: tap Enter / Space / click = next card · hold (0.8 s, ring fills) = skip to the title · Esc = skip.
-// ctx in: { mode: 'story', char }. Done → flow.go('battle', ctx). Cards / branching: ./ch1.js PROLOGUE.
-// Render-side DOM only (wall-clock timers); nothing here touches the sim.
-import { PROLOGUE } from './ch1.js';
+// ctx in: { mode: 'story', ch, char }. Done → flow.go('battle', ctx). Cards / map / branching: chapters.js header.
+// The paper, grain, filters, vignette and arrow ink are this frame's; the map art and the stamp are rebuilt from the
+// chapter on every enter. Render-side DOM only (wall-clock timers); nothing here touches the sim.
+import { chapter } from './chapters.js';
 
-const NUM = ['壹', '貳', '參', '肆', '伍', '陸'];
+const NUM = ['壹', '貳', '參', '肆', '伍', '陸', '柒', '捌', '玖', '拾'];
 const HOLD = 0.8;                                  // s held to skip (index.html: the ring's .on transition)
 
-// ---- the map (viewBox 1600×900): ranges, 漢水, places, troop arrows. Arrow = [id, side, cubic path M x y C ...]
-const peaks = (list, h, w) => list.map(([x, y, k = 1]) =>
-  `<path d="M${x - w * k} ${y} Q${x - w * k * 0.35} ${y - h * k * 0.55} ${x} ${y - h * k} Q${x + w * k * 0.3} ${y - h * k * 0.5} ${x + w * k} ${y}Z"/>`).join('');
-const ARROWS = [
-  ['shu1', 'shu', 'M150 880 C185 720 250 520 292 342'],
-  ['wei1', 'wei', 'M1040 330 C930 370 810 450 712 548'],
-  ['wei2', 'wei', 'M1060 350 C1040 450 990 540 930 590'],
-  ['shu2', 'shu', 'M318 338 C390 400 440 480 530 612'],
-  ['shu3', 'shu', 'M540 652 C570 616 596 574 626 536'],
-  ['shu4', 'shu', 'M668 520 C780 420 900 340 1020 318'],
-];
+// ---- the map frame (viewBox 1600×900): paper, blots, [chapter art], grain, troop arrows, [chapter labels], vignette.
+// Arrow = [id, side, cubic path M x y C ...]
 function head(d) {                                 // arrowhead at the path end, along the last control leg
   const n = d.match(/-?\d+(\.\d+)?/g).map(Number), [cx, cy, x, y] = n.slice(-4), a = Math.atan2(y - cy, x - cx) * 180 / Math.PI;
   return `<path d="M0 0 L-34 -17 L-24 0 L-34 17Z" transform="translate(${x} ${y}) rotate(${a.toFixed(1)})"/>`;
 }
-const MAP = `
+const MAP = ({ art, arrows }) => `
 <svg class="pl-map" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
   <defs>
     <filter id="pl-grain"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="3" seed="4"/>
@@ -41,34 +33,19 @@ const MAP = `
   <rect width="1600" height="900" fill="#d8c197"/>
   <g filter="url(#pl-blot)" fill="#8a5a2a" opacity=".16"><ellipse cx="260" cy="700" rx="260" ry="150"/><ellipse cx="1320" cy="180" rx="300" ry="120"/>
     <ellipse cx="900" cy="760" rx="220" ry="90"/></g>
-  <g class="pl-mtns" fill="url(#pl-mtn)" filter="url(#pl-ink)">
-    ${peaks([[90, 190, 1.1], [210, 170], [330, 200, 1.2], [470, 160, .9], [600, 190, 1.1], [760, 170], [900, 185, 1.2], [1060, 160], [1200, 190, 1.1], [1350, 170, .9], [1500, 195, 1.2]], 120, 90)}
-    ${peaks([[120, 900, 1.2], [300, 880], [480, 905, 1.1], [820, 890, .9], [1000, 905, 1.2], [1180, 885], [1380, 900, 1.1], [1540, 890]], 130, 100)}
-    ${peaks([[250, 330, .7], [340, 318, .8]], 110, 70)}
-  </g>
-  <g class="pl-mark" data-id="dingjun" fill="url(#pl-mtn)" filter="url(#pl-ink)">${peaks([[560, 640, .9], [640, 620, 1.35], [730, 645, .85]], 150, 80)}</g>
-  <g class="pl-mark" data-id="river" filter="url(#pl-ink)" fill="none" stroke-linecap="round">
-    <path d="M-20 360 C180 330 300 420 460 430 S760 360 920 420 S1220 470 1380 420 S1560 400 1620 430" stroke="#6f7c78" stroke-width="30" opacity=".35"/>
-    <path d="M-20 360 C180 330 300 420 460 430 S760 360 920 420 S1220 470 1380 420 S1560 400 1620 430" stroke="#46524f" stroke-width="7" opacity=".7"/>
-  </g>
+  ${art.slice(0, art.indexOf('<g class="pl-labels"'))}
   <rect width="1600" height="900" filter="url(#pl-grain)"/>
   <g class="pl-arrows" filter="url(#pl-ink)">
-    ${ARROWS.map(([id, side, d]) => `<g class="pl-arw ${side}" data-id="${id}"><path class="u" d="${d}" pathLength="1"/><path class="s" d="${d}" pathLength="1"/><g class="hd">${head(d)}</g></g>`).join('')}
+    ${arrows.map(([id, side, d]) => `<g class="pl-arw ${side}" data-id="${id}"><path class="u" d="${d}" pathLength="1"/><path class="s" d="${d}" pathLength="1"/><g class="hd">${head(d)}</g></g>`).join('')}
   </g>
-  <g class="pl-labels">
-    <g class="pl-mark" data-id="yangping"><rect x="276" y="286" width="30" height="30" rx="3"/><text x="330" y="312">陽平關</text></g>
-    <g class="pl-mark" data-id="nanzheng"><rect x="1042" y="282" width="36" height="36" rx="3"/><text x="1034" y="350">南鄭</text></g>
-    <g class="pl-mark wei" data-id="dingjun"><text x="600" y="690">定軍山</text><text class="sm" x="686" y="520">夏侯淵</text></g>
-    <g class="pl-mark wei" data-id="east"><text class="sm" x="880" y="650">張郃 東圍</text></g>
-    <g class="pl-mark" data-id="river"><text class="sm river" x="190" y="412">漢 水</text></g>
-  </g>
+  ${art.slice(art.indexOf('<g class="pl-labels"'))}
   <rect width="1600" height="900" fill="url(#pl-vig)"/>
 </svg>`;
 
 export function createPrologue(el, flow) {
-  el.innerHTML = `<div class="pl-paper">${MAP}
+  el.innerHTML = `<div class="pl-paper"><svg class="pl-map"></svg>
       <div class="pl-card"><div class="pl-cols"></div></div><p class="pl-en"></p>
-      <div class="pl-stamp"><small>第一章</small><b>定軍山</b><i>漢中之戰</i><em>CHAPTER I · MOUNT DINGJUN</em></div>
+      <div class="pl-stamp"></div>
       <div class="pl-pips"></div>
     </div>
     <i class="pl-rod l"></i><i class="pl-rod r"></i>
@@ -76,14 +53,15 @@ export function createPrologue(el, flow) {
       <span><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15"/><circle class="p" cx="18" cy="18" r="15" pathLength="1"/></svg>長按跳過<small>Hold to skip</small></span>
       <span><kbd>Esc</kbd>跳過<small>Skip</small></span></div>`;
   const $ = (s) => el.querySelector(s);
-  const map = $('.pl-map'), card = $('.pl-card'), cols = $('.pl-cols'), en = $('.pl-en'), pips = $('.pl-pips'), ring = $('.pl-skip .p');
+  const card = $('.pl-card'), cols = $('.pl-cols'), en = $('.pl-en'), pips = $('.pl-pips'), ring = $('.pl-skip .p');
   let ctx = {}, k = -1, timer = 0, swapT = 0, holdTimer = 0, holdT0 = 0, phase = 'off', stampAt = 0;
+  let map = $('.pl-map'), PROLOGUE = [];                   // this chapter's map element and cards (enter)
 
   const later = (fn, s) => { clearTimeout(timer); timer = setTimeout(fn, s * 1000); };
   function show(i) {
     k = i;
     if (k >= PROLOGUE.length) return stamp();
-    const c = PROLOGUE[k], v = c[ctx.char] || c;
+    const c = PROLOGUE[k], v = c.v;
     card.classList.remove('on');                             // the old card fades, then the new one is written in
     clearTimeout(swapT);
     swapT = setTimeout(() => {
@@ -152,9 +130,18 @@ export function createPrologue(el, flow) {
   el.addEventListener('pointerdown', (e) => { if (e.button === 0) down(); });
   el.addEventListener('pointerup', (e) => { if (e.button === 0) up(); });
 
+  let built = null;                                          // chapter id whose map + stamp are in the DOM
   return {
     enter(c) {
       ctx = c; phase = 'cards'; holdT0 = 0; stampAt = 0;
+      const C = chapter(c.ch), { CH } = C;
+      if (built !== CH.id) {
+        built = CH.id;
+        map.outerHTML = MAP(C.PL_MAP); map = $('.pl-map');
+        $('.pl-stamp').innerHTML = `<small>${CH.num.zh}</small><b>${CH.title.zh}</b><i>${CH.seal}</i><em>${CH.num.en} · ${CH.title.en.toUpperCase()}</em>`;
+      }
+      // this hero's cards: his branch, else the card's own text; a card with neither is skipped
+      PROLOGUE = C.PROLOGUE.map((p) => ({ ...p, v: p[c.char] || p })).filter((p) => p.v.cols).slice(0, NUM.length);
       el.classList.remove('stamped', 'out', 'open'); card.classList.remove('on');
       for (const m of el.querySelectorAll('[data-id]')) m.classList.remove('on', 'hot');
       map.style.transform = 'translate(0, 0) scale(1.1)';

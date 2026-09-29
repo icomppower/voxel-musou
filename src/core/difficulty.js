@@ -1,5 +1,7 @@
-// Difficulty: the four tiers, the player's pick and the 修羅 unlock (both kept per browser). Picked on the title's
-// difficulty panel after the mode; main.js startBattle copies the pick into game.diff (fixed for that battle).
+// Difficulty: the four tiers, the player's pick, the 修羅 unlock and the story progress (all kept per browser). Picked on
+// the title's difficulty panel after the chapter / battlefield; main.js startBattle copies the pick into game.diff
+// (fixed for that battle). Progress: localStorage voxel-musou.clears = JSON { [chapter id]: best rank 'S'|'A'|'B'|'C' }
+// (story/chapters.js chapterOpen: chapter i opens once chapter i-1 is in it); voxel-musou.chaos '1' = 修羅 open.
 // Design: grunts stay one-sweep fodder on every tier; the tiers turn pressure, officer toughness and the cost of a
 // mistake. Sim readers: crowd.js (hp, windup, strikers, gap, grace), combat.js (dmg, armor), crowd/view.js (windup),
 // story/index.js (heal, rank).
@@ -8,7 +10,7 @@
 //   windup     sim frames from wind-up start to the blow (the telegraph)
 //   strikers   Wei soldiers winding up at once        gap / grace  strike-start gap / feint window after a blow lands
 //   armor      officers shrug off non-heavy hits (no flinch: they keep swinging through a combo)
-//   heal       stage-clear heal multiplier (ch1 `heal` beats)
+//   heal       stage-clear heal multiplier (story `heal` beats)
 //   rankBonus / rankMax   story rank: extra points / best rank reachable
 //   bars       title card pips 1-5: [敵勢 pressure, 敵將 officers, 傷害 damage]
 export const DIFFS = [
@@ -21,19 +23,26 @@ export const DIFFS = [
   { id: 'chaos', zh: '修羅', en: 'Chaos', line: ['一騎當千，九死一生', 'One against a thousand. Few come back.'], bars: [5, 5, 5],
     gruntHp: 1.3, officerHp: 2, dmg: 2.2, windup: 30, strikers: 3, gap: 0.6, grace: 0.3, armor: true, heal: 0.4, rankBonus: 2, rankMax: 'S' },
 ];
-export const LOCK = ['以上級攻克第一章後解鎖', 'Clear Chapter I on Hard to unlock'];
-const KEY = 'voxel-musou.diff', OPEN = 'voxel-musou.chaos';
+export const LOCK = ['以上級攻克任一章後解鎖', 'Clear any chapter on Hard to unlock'];
+const KEY = 'voxel-musou.diff', OPEN = 'voxel-musou.chaos', CLEARS = 'voxel-musou.clears';
 const get = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const put = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 
-/** 修羅 is locked until Chapter I is cleared on 上級 (or 修羅); every other tier is always open. */
+/** 修羅 is locked until any chapter is cleared on 上級 (or 修羅); every other tier is always open. */
 export const unlocked = (d) => d.id !== 'chaos' || get(OPEN) === '1';
 let cur = DIFFS.find((d) => d.id === get(KEY) && unlocked(d)) || DIFFS[1];
 
 export const difficulty = () => cur;
 export function setDifficulty(d) { cur = d; put(KEY, d.id); }
-/** A story win on tier d (main.js, story:end). Returns true when this clear just opened 修羅. */
-export function recordClear(d) {
+/** Best rank per cleared chapter: { [chapter id]: 'S' | 'A' | 'B' | 'C' }. */
+export function clears() { try { return JSON.parse(get(CLEARS)) || {}; } catch { return {}; } }
+/** Best rank on chapter id, or undefined while it is uncleared. */
+export const cleared = (id) => clears()[id];
+/** A story win on tier d, chapter ch, rank (main.js, story:end): keeps the best rank. Returns true when this clear just
+ *  opened 修羅. */
+export function recordClear(d, ch, rank = 'C') {
+  const all = clears();
+  if (!all[ch] || 'SABC'.indexOf(rank) < 'SABC'.indexOf(all[ch])) { all[ch] = rank; put(CLEARS, JSON.stringify(all)); }
   if ((d.id !== 'hard' && d.id !== 'chaos') || get(OPEN) === '1') return false;
   put(OPEN, '1');
   return true;

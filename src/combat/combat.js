@@ -173,7 +173,7 @@ export function createCombat(game) {
     if (hit.shape === 'line') { dx = dx * 0.35 + Math.sin(yaw) * 0.65; dz = dz * 0.35 + Math.cos(yaw) * 0.65; }
     const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
 
-    c.hp[i] -= hit.dmg;
+    c.hp[i] -= hit.dmg * h.atkK;                                   // atkK: story buff (story/index.js), 1 otherwise
     // hot silhouette only on a fresh contact (crowd/view.js hitGlow); rapid re-hits (multi-hit moves, juggles) just refresh the tint.
     // Heavy hits tint 3 sf longer and deeper (amber).
     c.flash[i] = c.flash[i] > COMBAT.tintFrames / 2 ? COMBAT.tintFrames - 2 : COMBAT.tintFrames + (hit.heavy ? 3 : 0);
