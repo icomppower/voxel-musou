@@ -51,6 +51,9 @@ export function createStory(game) {
   on('hero:down', () => { if (S.mode === 'story' && S.won < 0) S.downT = S.t; });
   on('hero:hurt', (e) => { S.dmg += e.dmg; });
   on('ko', (e) => { if (e.officer && S.off) for (const k in S.off) if (S.off[k] === e.i) { S.dead[k] = true; S.off[k] = -1; } });
+  // the hero struck this step (a swing / shot or a Musou; drawing the bow is a stance): the calm hold reads it
+  on('attack:start', (e) => { if (e.move !== 'aim') S.atk = true; });
+  on('musou:start', () => { S.atk = true; });
 
   // ---- dialogue: one line at a time; lines resolve the speaker (hero / ally / SPK seal) and branch on the hero
   const say = (line) => {
@@ -74,6 +77,8 @@ export function createStory(game) {
     if (w.at && h.z < pos(w.at)[1]) return false;
     if (w.down && !S.dead[w.down]) return false;
     if (w.below && officerFrac(w.below[0]) >= w.below[1]) return false;
+    if (w.held && !S.held) return false;
+    if (w.broke && !S.broke) return false;
     return true;
   };
 
@@ -93,6 +98,7 @@ export function createStory(game) {
     if (b.heal && !h.dead) h.hp = Math.min(h.hpMax, h.hp + b.heal * game.diff.heal * h.hpMax);
     if (b.morale != null) S.mBase = b.morale === 1 ? 1 : S.mBase + b.morale;
     if (b.gate) setGate(b.gate, true);
+    if (b.calm) { const [x, z] = pos(b.calm.at); S.calm = { x, z, r: b.calm.r ?? 5, frames: b.calm.frames, obj: b.calm.obj, t0: S.t }; S.calmT = 0; S.held = S.broke = false; }
     if (b.banner) emit('story:banner', { dur: 150, ...b.banner });
     if (b.hush) S.q.length = 0;                                        // stage cleared: queued taunts are stale now
     if (b.obj) { emit('story:objective', { zh: b.obj.zh, en: b.obj.en }); S.go = b.obj.go; }
@@ -102,7 +108,7 @@ export function createStory(game) {
   st.reset = ({ mode = 'free', char = 'zhaoyun' } = {}) => {
     Object.assign(S, { mode, char, ally: char === 'huangzhong' ? 'zhaoyun' : 'huangzhong', t: 0, done: false, maxChain: 0,
       downT: -1, dmg: 0, beat: 0, beatT: 0, koBase: 0, off: {}, want: {}, dead: {}, q: [], sayUntil: 0, limit: Infinity, nag: null,
-      nagT: -999, mBase: 0.4, won: -1, go: null, ch: chapter(mapId()) });
+      nagT: -999, mBase: 0.4, won: -1, go: null, ch: chapter(mapId()), atk: false, calm: null, calmT: 0, held: false, broke: false });
     game.timeScale = 1;
     st.target = null;
     if (mode === 'story') for (const id in GATES) setGate(id, false);   // spawnPoint() opened them all; the script opens each
@@ -129,6 +135,17 @@ export function createStory(game) {
       if (k >= 300) S.end(true);
     } else if (S.downT >= 0) { if (S.t - S.downT >= 120) S.end(false); return; }     // 2 s on the ground, then defeat
 
+    // calm hold (a beat's `calm`): stand within r of the spot, don't strike, for `frames` in a row. Stepping out of the
+    // circle restarts the count; a strike (or a Musou) after the first 1.5 s breaks it for good. The objective counts the seconds down.
+    if (S.calm) {
+      const C = S.calm;
+      if (S.atk && S.t - C.t0 > 90) { S.broke = true; S.calm = null; }       // 1.5 s grace: a combo already under way finishes
+      else if (Math.hypot(h.x - C.x, h.z - C.z) <= C.r) {
+        if (++S.calmT >= C.frames) { S.held = true; S.calm = null; }
+        else if (C.obj && S.calmT % 60 === 1) emit('story:objective', { zh: `${C.obj.zh} ${Math.ceil((C.frames - S.calmT) / 60)}`, en: `${C.obj.en} ${Math.ceil((C.frames - S.calmT) / 60)}s` });
+      } else S.calmT = 0;
+    }
+    S.atk = false;
     const BEATS = S.ch.BEATS;
     while (S.beat < BEATS.length) {
       const b = BEATS[S.beat];
