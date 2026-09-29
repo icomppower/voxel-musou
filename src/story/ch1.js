@@ -52,6 +52,7 @@ export const CHAPTER = {
   head: '第一章 定軍山 · CHAPTER I · MOUNT DINGJUN',
   allies: [-1, 1].map((sx) => ({ x: sx * 5.575, z: -121.6, n: 12, cols: 4, hold: true })),   // the van either side of the road inside the 本陣 gate
   prologue: true,
+  unlocks: true,                                   // a 上級 / 修羅 clear here opens 修羅 (core/difficulty.js)
 };
 
 const SUMMIT_GATE = ['summit', -0.65, -0.53];   // the 'summit' barricade across the ramp (≈ -20, 176)
@@ -222,6 +223,38 @@ export const PROLOGUE = [
   { cols: ['金鼓振天', '歡聲動谷', '一戰定漢中'], en: 'Drums shake the sky and war cries fill the valleys. One battle will decide Hanzhong.',
     show: ['shu4'], focus: [700, 450, 1.04] },
 ];
+
+// ---- the prologue's handscroll map (prologue.js; viewBox 1600×900): the ranges, 漢水, places and troop arrows.
+// land(peaks) / labels: SVG under / over the paper grain; a `data-id` group is a mark a card's `show` lights.
+// Arrow = [id, side ('shu' | 'wei' | 'fire'), cubic path M x y C ...]. stamp: the chapter title card.
+export const SCROLL = {
+  arrows: [
+    ['shu1', 'shu', 'M150 880 C185 720 250 520 292 342'],
+    ['wei1', 'wei', 'M1040 330 C930 370 810 450 712 548'],
+    ['wei2', 'wei', 'M1060 350 C1040 450 990 540 930 590'],
+    ['shu2', 'shu', 'M318 338 C390 400 440 480 530 612'],
+    ['shu3', 'shu', 'M540 652 C570 616 596 574 626 536'],
+    ['shu4', 'shu', 'M668 520 C780 420 900 340 1020 318'],
+  ],
+  land: (peaks) => `
+  <g class="pl-mtns" fill="url(#pl-mtn)" filter="url(#pl-ink)">
+    ${peaks([[90, 190, 1.1], [210, 170], [330, 200, 1.2], [470, 160, .9], [600, 190, 1.1], [760, 170], [900, 185, 1.2], [1060, 160], [1200, 190, 1.1], [1350, 170, .9], [1500, 195, 1.2]], 120, 90)}
+    ${peaks([[120, 900, 1.2], [300, 880], [480, 905, 1.1], [820, 890, .9], [1000, 905, 1.2], [1180, 885], [1380, 900, 1.1], [1540, 890]], 130, 100)}
+    ${peaks([[250, 330, .7], [340, 318, .8]], 110, 70)}
+  </g>
+  <g class="pl-mark" data-id="dingjun" fill="url(#pl-mtn)" filter="url(#pl-ink)">${peaks([[560, 640, .9], [640, 620, 1.35], [730, 645, .85]], 150, 80)}</g>
+  <g class="pl-mark" data-id="river" filter="url(#pl-ink)" fill="none" stroke-linecap="round">
+    <path d="M-20 360 C180 330 300 420 460 430 S760 360 920 420 S1220 470 1380 420 S1560 400 1620 430" stroke="#6f7c78" stroke-width="30" opacity=".35"/>
+    <path d="M-20 360 C180 330 300 420 460 430 S760 360 920 420 S1220 470 1380 420 S1560 400 1620 430" stroke="#46524f" stroke-width="7" opacity=".7"/>
+  </g>`,
+  labels: `
+    <g class="pl-mark" data-id="yangping"><rect x="276" y="286" width="30" height="30" rx="3"/><text x="330" y="312">陽平關</text></g>
+    <g class="pl-mark" data-id="nanzheng"><rect x="1042" y="282" width="36" height="36" rx="3"/><text x="1034" y="350">南鄭</text></g>
+    <g class="pl-mark wei" data-id="dingjun"><text x="600" y="690">定軍山</text><text class="sm" x="686" y="520">夏侯淵</text></g>
+    <g class="pl-mark wei" data-id="east"><text class="sm" x="880" y="650">張郃 東圍</text></g>
+    <g class="pl-mark" data-id="river"><text class="sm river" x="190" y="412">漢 水</text></g>`,
+  stamp: { small: '第一章', big: '定軍山', seal: '漢中之戰', en: 'CHAPTER I · MOUNT DINGJUN' },
+};
 
 // ---- result screen epilogue (win), branched on the hero
 export const EPILOGUE = {
