@@ -86,7 +86,7 @@ export function createStory(game) {
     for (const k in b.officers || {}) {                                // spawned on the next steps (retried while slots are full)
       const o = b.officers[k], d = OFF[o.like || k];
       const [x, z] = pos(o.at);
-      S.want[k] = { x, z, name: d.name, hp: d.hp, boss: !!d.boss, engaged: !!o.engaged };
+      S.want[k] = { x, z, name: d.name, hp: d.hp, boss: !!d.boss, engaged: !!o.engaged, look: d.look };   // look: C3 (armies.js)
       S.off[k] = -1; S.dead[k] = false;
     }
     if (b.waves != null) c.setWaves(b.waves);

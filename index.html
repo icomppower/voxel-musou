@@ -197,14 +197,15 @@
   #hud .off .ld { position: absolute; left: -.07rem; bottom: 0; width: .14rem; height: 1px; transform-origin: 50% 100%;
     background: rgba(255,217,168,.75); box-shadow: 0 0 .15rem rgba(0,0,0,.8); }
 
-  /* minimap: square battlefield map + 蜀/魏 morale bar (top right) */
+  /* minimap: square battlefield map + ally / foe morale bar (top right; army colours --ally / --foe (ui) and --ally-d /
+     --foe-d (flag) set by hud.js from game.army) */
   #hud .h-map { right: 2.4%; top: 4.2rem; width: 20rem; }
   #hud .h-map canvas { display: block; width: 20rem; height: 20rem; box-shadow: 0 0 0 .1rem rgba(214,184,130,.75), 0 0 0 .25rem rgba(0,0,0,.45), 0 .4rem 1rem rgba(0,0,0,.4); }
-  #hud .morale { position: relative; height: .5rem; margin: 0 0 .7rem; background: #c0392b; box-shadow: 0 0 0 .1rem rgba(0,0,0,.6); }
-  #hud .morale i { position: absolute; inset: 0; background: linear-gradient(#8fc4ff, #2f6fd0); transform-origin: 0 50%; }
-  #hud .morale span { position: absolute; top: -.6rem; font: 700 1.5rem/1 var(--brush); }
-  #hud .morale span:first-of-type { left: -2rem; color: #9cc8ff; }
-  #hud .morale span:last-of-type { right: -2rem; color: #ff8a70; }
+  #hud .morale { position: relative; height: .5rem; margin: 0 0 .7rem; background: linear-gradient(var(--foe), var(--foe-d)); box-shadow: 0 0 0 .1rem rgba(0,0,0,.6); }
+  #hud .morale i { position: absolute; inset: 0; background: linear-gradient(var(--ally), var(--ally-d)); transform-origin: 0 50%; }
+  #hud .morale span { position: absolute; top: -.6rem; font: 700 1.5rem/1 var(--brush); text-shadow: 0 0 .2rem #000; }
+  #hud .morale span:first-of-type { left: -2rem; color: var(--ally); }
+  #hud .morale span:last-of-type { right: -2rem; color: var(--foe); }
   #hud .h-map .seal { position: absolute; left: .5rem; bottom: .5rem; font-size: 1.05rem; padding: .2rem .15rem; opacity: .9; }
   /* start / pause menu: the sim waits behind it (Esc reopens it). Ink band + brush name, the title's menu vocabulary */
   #menu { position: fixed; inset: 0; z-index: 2; display: flex; flex-direction: column; justify-content: center; padding: 0 0 0 9vw;

@@ -3,8 +3,9 @@
 // chain counter that rolls up hit by hit with DW8 ghost digits (left), officer target bar (top left) and stacked floating
 // officer name/HP/▼▼ tags, square battlefield minimap with morale bar (top right), queued system banners and dialogue,
 // a title/controls intro card, an objective line (top left), and an idle auto-fade.
-// Character text / portraits come from game.hero.char (src/chars/index.js), refreshed on every 'scenario'. Dialogue,
-// banners and the objective are driven by story events (story:say / story:banner / story:objective, core/events.js).
+// Character text / portraits come from game.hero.char (src/chars/index.js), army glyphs / names / colours (morale bar,
+// reinforcement banners, minimap dots and pings) from game.army (crowd/armies.js), both refreshed on every 'scenario'.
+// Dialogue, banners and the objective are driven by story events (story:say / story:banner / story:objective, core/events.js).
 // Render-only: reads sim state, never writes it. Animations are timed in sim frames.
 // Styles live in index.html (#hud ...). Sizes are rem, and 1rem = 1/72 of the viewport height (10 px at 720p).
 import { Vector3 } from 'three';
@@ -71,7 +72,7 @@ export function createHud(root, game, camera) {
       <div class="sub"></div>
       <div class="keys"></div></div>
     <div class="h-target"><i class="seal">將</i><b></b><span></span><div class="bar"><em></em><i></i></div><strong>擊破</strong></div>
-    <div class="h-map"><div class="morale"><i></i><span>蜀</span><span>魏</span></div><canvas width="200" height="200"></canvas><i class="seal">${MAP.name.zh}</i></div>
+    <div class="h-map"><div class="morale"><i></i><span></span><span></span></div><canvas width="200" height="200"></canvas><i class="seal">${MAP.name.zh}</i></div>
     <div class="h-offs">${'<div class="off"><i class="ld"></i><div class="mk">▼▼</div><div class="bd"><b></b><span></span><div class="bar"><em></em><i></i></div></div></div>'.repeat(nOff)}</div>
     <div class="h-chain"><div class="num"><b class="dig" data-t="0"><span>0</span></b><u></u><u></u><u></u></div><small><em>連擊</em>CHAIN</small></div>
     <div class="h-mile"><b class="dig" data-t="50"><span>50</span></b><i class="seal">擊破</i></div>
@@ -94,7 +95,7 @@ export function createHud(root, game, camera) {
     nm: el.querySelector('b'), en: el.querySelector('span'), bar: el.querySelector('.bar i'), lagEl: el.querySelector('.bar em'), lag: 1 }));
   const obj = $('.h-obj'), objB = $('.h-obj b'), objS = $('.h-obj small'), dlgCv = $('.h-dlg canvas'), dlgN = $('.h-dlg b i'), dlgE = $('.h-dlg b span');
   const objGo = $('.h-obj .go'), objAr = $('.h-obj .ar'), objD = $('.h-obj .go em'), dlgSeal = $('.h-dlg .dseal');
-  const moraleI = $('.morale i'), mapEl = $('.h-map');
+  const moraleI = $('.morale i'), [moraleA, moraleF] = $$('.morale span'), mapEl = $('.h-map');
   const mapCv = $('.h-map canvas'), map = mapCv.getContext('2d');
   const offName = (i) => game.crowd.offName[i - game.crowd.grunts] || { zh: '敵將', en: 'OFFICER' };
   const cap = (en) => en.replace(/\b(\w)(\w*)/g, (m, a, b) => a + b.toLowerCase());
@@ -108,6 +109,9 @@ export function createHud(root, game, camera) {
       musouF: -999, musouEnd: -999, waves: [], introCut: 0, obj: null, zone: null,
     });
     text($('.h-map .seal'), MAP.name.zh);                             // the loaded map (main.js world.load before 'scenario')
+    const { foe, ally } = game.army;                                  // armies: morale glyphs, bar colours (index.html vars)
+    text(moraleA, ally.glyph); text(moraleF, foe.glyph);
+    for (const [k, v] of [['--ally', ally.ui], ['--ally-d', ally.flag], ['--foe', foe.ui], ['--foe-d', foe.flag]]) mapEl.style.setProperty(k, v);
     const ch = game.hero.char;                                        // character text + portraits
     text($('.h-intro .zh'), ch.name.zh); text($('.h-intro .seal'), ch.seal); text($('.h-intro .en'), ch.name.en.toUpperCase());
     text($('.h-intro .sub'), ch.motto); text($('.h-player .name'), ch.name.zh);
@@ -152,11 +156,11 @@ export function createHud(root, game, camera) {
   on('story:banner', (e) => banner(e.html, e.en, e.dur ?? 150, !!e.big, e.big ? 2 : 1));
   on('story:objective', (e) => { S.obj = e.zh ? { zh: e.zh, en: e.en || '', f: game.frame } : null; if (S.obj) { text(objB, e.zh); text(objS, e.en || ''); } });
   on('crowd:wave', (e) => {
-    if (game.frame - S.waveF > 600) { S.waveF = game.frame; banner('<em>魏軍</em>援兵 抵達', 'Wei reinforcements have arrived!', 130); }
+    if (game.frame - S.waveF > 600) { S.waveF = game.frame; const a = game.army.foe; banner(`<em>${a.name.zh}</em>援兵 抵達`, `${a.name.en} reinforcements have arrived!`, 130); }
     S.waves.push({ x: e.x, z: e.z, f: game.frame });
   });
   on('crowd:allies', (e) => {
-    if (game.frame - S.allyF > 900) { S.allyF = game.frame; banner('<em>蜀軍</em>援兵 趕到', 'Shu reinforcements have joined the fight', 120); }
+    if (game.frame - S.allyF > 900) { S.allyF = game.frame; const a = game.army.ally; banner(`<em>${a.name.zh}</em>援兵 趕到`, `${a.name.en} reinforcements have joined the fight`, 120); }
     S.waves.push({ x: e.x, z: e.z, f: game.frame, ally: true });
   });
   on('hit', (e) => { S.actF = game.frame; if (e.officer) { S.tgt = e.i; S.tgtF = game.frame; } });
@@ -181,7 +185,7 @@ export function createHud(root, game, camera) {
 
   return {
     update() {
-      const h = game.hero, f = game.frame, c = game.crowd;
+      const h = game.hero, f = game.frame, c = game.crowd, { foe, ally } = game.army;
       const W = root.clientWidth, H = root.clientHeight;
       const df = Math.max(0, f - S.lastF); S.lastF = f;
       const inMusou = h.state === 'musou';
@@ -408,7 +412,7 @@ export function createHud(root, game, camera) {
         if (L > rem) set(o.ld, 'transform', `translate(0, ${(-o.mkH).toFixed(1)}px) rotate(${Math.atan2(vx, -vy).toFixed(3)}rad) scaleY(${L.toFixed(1)})`);
       }
 
-      // morale (蜀 blue vs 魏 red) from KOs against the enemies still standing
+      // morale (ally vs foe, in the armies' colours) from KOs against the enemies still standing
       let alive = 0;
       for (let i = 0; i < c.N; i++) if (c.st[i] !== ST.OFF && c.st[i] !== ST.DEAD) alive++;
       // story mode: the director's morale (stage clears raise it, the ambush / drums drop it)
@@ -455,9 +459,10 @@ export function createHud(root, game, camera) {
       S.waves = S.waves.filter((w) => f - w.f < 120);
       for (const w of S.waves) {
         const t = (f - w.f) / 120;
-        map.strokeStyle = w.ally ? `rgba(110,220,110,${(1 - t).toFixed(2)})` : `rgba(255,80,55,${(1 - t).toFixed(2)})`; map.lineWidth = 2;
+        map.strokeStyle = (w.ally ? ally : foe).ui; map.globalAlpha = 1 - t; map.lineWidth = 2;
         map.beginPath(); map.arc(X(w.x), Y(w.z), 5 + t * 22, 0, 7); map.stroke();
       }
+      map.globalAlpha = 1;
       const cy = game.cam.yaw;
       const cone = map.createRadialGradient(100, 100, 0, 100, 100, 70);
       cone.addColorStop(0, 'rgba(200,240,255,0.3)'); cone.addColorStop(1, 'rgba(200,240,255,0)');
@@ -472,12 +477,12 @@ export function createHud(root, game, camera) {
           if (x > -2 && x < 202 && y > -2 && y < 202) map.fillRect(x - 1.5, y - 1.5, 3, 3);
         }
       };
-      dots(0, c.grunts, '#e0412c'); dots(c.N, c.T, '#6ee06e');       // Wei grunts, Shu allies
+      dots(0, c.grunts, foe.ui); dots(c.N, c.T, ally.ui);            // foe grunts, allies
       for (let i = c.grunts; i < c.N; i++) {
         if (c.st[i] === ST.OFF || c.st[i] === ST.DEAD) continue;
         const x = Math.max(5, Math.min(195, X(c.x[i]))), y = Math.max(5, Math.min(195, Y(c.z[i])));
         map.fillStyle = '#1a0d08'; map.fillRect(x - 5, y - 5, 10, 10);
-        map.fillStyle = i === tg ? '#ffe08a' : '#ff5a3a'; map.fillRect(x - 3.5, y - 3.5, 7, 7);
+        map.fillStyle = i === tg ? '#ffe08a' : foe.ui; map.fillRect(x - 3.5, y - 3.5, 7, 7);
       }
       const ay = h.yaw;                                              // hero arrow
       const px = (a, r) => 100 - Math.sin(a) * r, py = (a, r) => 100 - Math.cos(a) * r;

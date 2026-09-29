@@ -10,8 +10,8 @@
 //  - Finishers with mass: C6 rock eruption (voxel boulders 1-2 H up inside a ≥ 2.5 H dust wall), C3 dark smoke arc →
 //    gold pillar ring, C5 fan of ice shafts, jump charge / N6 quake; other heavy windows shaped by the hitbox. Volumes
 //    keep the sector toward the camera clear. Musou burst = teal-white ray burst + whiteout + rock eruption.
-//  - Every KO breaks the soldier apart: voxel-clump debris in his palette plus helmet / torso / shield blocks (bounce,
-//    settle, persist), warm voxel dust, embers, charge glint.
+//  - Every KO breaks the soldier apart: voxel-clump debris in his army's palette (game.army.foe, re-read on 'scenario')
+//    plus helmet / torso / shield blocks (bounce, settle, persist), warm voxel dust, embers, charge glint.
 //  - Layering pass (DW8 bar): the ribbon gets an additive HDR glow under its stepped core and sheds glitter off the tip;
 //    each contact adds a razor cut mark across the body + a shock pulse ring, heavy contacts / officer KOs an impact
 //    point light; every finisher slam tears a glowing ground-crack decal (draped on the terrain) and throws a shock wall;
@@ -27,6 +27,7 @@ import { heroPose } from '../hero/hero.js';
 import { POSE_SIZE, spearWorld, weaponWorld } from '../hero/rig.js';
 import { lensClear } from '../camera/occlusion.js';        // camera part (r3): debris never blocks the lens
 import { ground } from '../world/map.js';                  // effects live in sim space (y above ground); lifted at draw
+import { palette } from '../crowd/armies.js';
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
 const _d = new THREE.Vector3(), _up = new THREE.Vector3(0, 0, 1), _c = new THREE.Color();
@@ -50,14 +51,17 @@ function clumpGeometry() {
 const lin = (hex, k = 1) => { _c.set(hex); return [_c.r * k, _c.g * k, _c.b * k]; };
 
 // ------------------------------------------------------------------ palettes (linear)
-// weighted by how much of the soldier each colour covers (crowd/view.js palette): mostly dark lamellar, a few red
-// headband / shield / skin chips
-const SOLDIER = [lin(0x3e3430), lin(0x3e3430), lin(0x564842), lin(0x1d1513), lin(0x4a4341), lin(0x5e3026), lin(0x3a302b),
-  lin(0xd0321f), lin(0xd6a07a), lin(0x7a2418)];
-const OFFICER = [lin(0x2b3350), lin(0x2b3350), lin(0x3e4a70), lin(0x2a3150), lin(0xe0b450), lin(0xa82c1e), lin(0xd6a07a)];
-// KO body blocks: [colour, size min, size max, height offset] = helmet, torso, shield/cape, headband chip
-const SOLDIER_BODY = [[lin(0x4a4341), 0.27, 0.31, 0.45], [lin(0x3e3430), 0.34, 0.4, 0], [lin(0x5e1a12), 0.27, 0.32, -0.1], [lin(0xd0321f), 0.13, 0.17, 0.5]];
-const OFFICER_BODY = [[lin(0x2a3150), 0.3, 0.34, 0.45], [lin(0x2b3350), 0.4, 0.46, 0], [lin(0xa82c1e), 0.32, 0.38, -0.1], [lin(0xe0b450), 0.16, 0.2, 0.5]];
+// KO debris in the foe army's colours (crowd/armies.js palette, rebuilt on 'scenario' from game.army.foe): chips weighted
+// by how much of the soldier each colour covers — mostly dark lamellar, a few headband / shield / skin chips — and the
+// KO body blocks [colour, size min, size max, height offset] = helmet, torso, shield / cape, headband / trim chip
+let SOLDIER, OFFICER, SOLDIER_BODY, OFFICER_BODY;
+function armyDebris(army) {
+  const { grunt: g, officer: o } = palette(army);
+  SOLDIER = [g.armor, g.armor, g.plate, g.lace, g.helm, g.cloth, g.pants, g.band, g.skin, g.shield[0]].map((c) => lin(c));
+  OFFICER = [o.armor, o.armor, o.plate, o.helm, o.helmHi, o.cape[1], o.skin].map((c) => lin(c));
+  SOLDIER_BODY = [[lin(g.helm), 0.27, 0.31, 0.45], [lin(g.armor), 0.34, 0.4, 0], [lin(g.shield[1]), 0.27, 0.32, -0.1], [lin(g.band), 0.13, 0.17, 0.5]];
+  OFFICER_BODY = [[lin(o.helm), 0.3, 0.34, 0.45], [lin(o.armor), 0.4, 0.46, 0], [lin(o.cape[1]), 0.32, 0.38, -0.1], [lin(o.helmHi), 0.16, 0.2, 0.5]];
+}
 const GROUND = [lin(0x614549), lin(0x7a5a48), lin(0x8a6a50), lin(0x54403a), lin(0xbb8965)];
 // erupting rocks: the cobbles' mauve-brown plus sun-bleached stone tops
 const ROCK = [lin(0x7a5a48), lin(0x8a6a50), lin(0x9c8068), lin(0xb89a7c), lin(0xa88c70), lin(0x6e5446)];
@@ -1162,7 +1166,9 @@ export function createVfx(scene, game, world) {
     rocks(e.x, e.z, 18, 3, 0.16, 0.4, [5, 11], 8);
     dustColumn(e.x, e.z, 8, 2, 5, 4.6, [0.9, 1.3], 0.4);
   });
+  armyDebris(game.army.foe);
   on('scenario', () => {
+    armyDebris(game.army.foe);
     sparks.clear(); hot.clear(); debris.clear(); dust.clear(); samples.length = 0;
     B.on.fill(0); St.on.fill(0); vfx.flash = 0; lastTick = -1; auraK = 0;
     for (const m of [...rings, ...cracks, ...walls]) m.visible = false;
