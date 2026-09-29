@@ -1221,7 +1221,7 @@ export function createVfx(scene, game, world) {
     const s = samples.length > MAXS ? samples.shift() : null;
     const smp = s && !s.brk ? s : { b: new THREE.Vector3(), t: new THREE.Vector3(), rt: new THREE.Vector3() };
     smp.rt.copy(tipNow);
-    smp.c = clock; smp.brk = false; smp.g = heavy ? 1.15 : 1; smp.hue = musou ? 1 : 0;
+    smp.c = clock; smp.brk = false; smp.g = heavy ? 1.15 : 1; smp.hue = musou && zy() ? 1 : 0;   // musou teal: Zhao Yun's; other kits keep their ribbon
     const last = samples[samples.length - 1], prev = last && !last.brk ? last : null;
     if (prev && prev.rt.distanceToSquared(tipNow) < 1e-6) { prev.c = clock; return; }
     // only a fast tip leaves a ribbon: wind-ups and holds (< ≈ 5 m/s) draw nothing, so no slow "flag" hangs on the spear

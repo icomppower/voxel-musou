@@ -183,9 +183,9 @@ export function createKitView(parent, game, camera, { sig, blade }) {
       weaponWorld(pose, hp.set(h.x, h.y, h.z), h.yaw, 0, 0, blade, tip, h.kit);
       tip.y += ground(h.x, h.z);
       const k = 0.2 + e * 0.45;
-      cCore.position.copy(tip); cCore.scale.setScalar(k * 0.5 * (1 + 0.15 * Math.sin(t * 24)));
-      cHalo.position.copy(tip); cHalo.scale.setScalar(k * 1.5 * (1 + 0.08 * Math.sin(t * 13)));
-      cCore.material.opacity = e * 0.9; cHalo.material.opacity = e * 0.5; cMotes.material.opacity = e;
+      cCore.position.copy(tip); cCore.scale.setScalar(k * 0.3 * (1 + 0.15 * Math.sin(t * 24)));
+      cHalo.position.copy(tip); cHalo.scale.setScalar(k * 0.75 * (1 + 0.08 * Math.sin(t * 13)));   // a glow round a hot point, not a disc
+      cCore.material.opacity = e * 0.8; cHalo.material.opacity = e * 0.18; cMotes.material.opacity = e;
       cLight.position.copy(tip);
       for (let i = 0; i < NM; i++) {                   // motes spiral in toward the blade and rise off it
         const a = i * 2.39996 + t * 3.2, u = (t * 0.8 + i / NM) % 1, r = k * (1.5 - u * 1.1), sc = k * 0.09 * (1 - u * 0.5);

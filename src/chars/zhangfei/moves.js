@@ -59,7 +59,7 @@ export function moves() {
     ja2: { frames: 24, air: true, hover: 2.4, next: 'ja3', charge: 'jc', cancel: 12, dodgeCancel: 99, steer: 3,
       hits: [{ f: [6, 10], sweep: -1, shape: 'arc', range: 3.4, ang: 200, dmg: 14, kb: 'push', force: 6, hitstop: 3, yMax: 4.5 }] },
     ja3: { frames: 30, air: true, hover: 1.4, next: 'jatk', charge: 'jc', cancel: 18, dodgeCancel: 99, steer: 3,
-      hits: [{ f: [9, 12], every: ONCE, shape: 'circle', range: 3.4, dmg: 22, kb: 'blow', force: 10, lift: 2, hitstop: 6, heavy: true, yMax: 5 }] },
+      hits: [{ f: [9, 12], every: ONCE, shape: 'circle', range: 3.4, dmg: 22, kb: 'blow', force: 10, lift: 2, hitstop: 6, yMax: 5 }] },   // (not heavy: no ground quake metres under him)
     // (jc: his own hang / landing timing — anims/locomotion.js reads the kit's jc for the squash and glow)
     jc: { frames: 60, air: true, hover: 3, landFrame: 37, hang: [6, 33], plunge: [33, -82], cancel: 54, dodgeCancel: 42, steer: 12, armor: true,
       hits: [{ f: [37, 40], every: ONCE, shape: 'circle', range: 5, dmg: 26, kb: 'launch', force: 6, lift: 9, hitstop: 8, heavy: true, rocks: 12 }] },
