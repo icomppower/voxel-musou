@@ -257,5 +257,6 @@ const frame = (now) => {
 
 const dev = params.get('go');
 // the page opens under full ink (index.html): the first screen is built and compiled under it, then the ink sweeps off
-inkBoot(() => dev ? flow.go('battle', { mode: dev === 'story' ? 'story' : 'free', char: params.get('char') || 'zhaoyun', map: params.get('map') || 'dingjun' }) : flow.go('title'));
+// dev: ?go=story|free [&ch=<chapter id> | &map=<battlefield>] [&char=zhaoyun|huangzhong] (a chapter id is its battlefield id)
+inkBoot(() => dev ? flow.go('battle', { mode: dev === 'story' ? 'story' : 'free', char: params.get('char') || 'zhaoyun', map: params.get('ch') || params.get('map') || 'dingjun' }) : flow.go('title'));
 requestAnimationFrame(frame);
