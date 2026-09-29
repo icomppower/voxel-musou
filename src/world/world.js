@@ -10,7 +10,8 @@ import { buildTerrain, GRASS_TIME } from './terrain.js';
 import { buildCastle } from './castle.js';
 import { createRiver } from './river.js';
 import { buildDressing } from './dressing.js';
-import { WALL_Z, GATE_X, CAMP_H, GATES, ground, smooth } from './map.js';
+import { WALL_Z, GATE_X, CAMP_H, GATES, ground, smooth, useMap } from './map.js';
+import { createChibi } from './chibi.js';
 
 // burning wrecks on the field, near the walkable edges so the fight stays clear: [x, z, scale]
 const FIELD_FIRES = [[-33, -64, 1.2], [32, -58, 1.1], [-30, 8, 1.3], [30, -8, 1.2], [-22, -28, 1.0], [24, 24, 1.1], [15, 40, 1.0],
@@ -30,13 +31,11 @@ const SHADOW_BOX = 34;
     '\t\t\tshadow = mix( shadow, 1.0, smoothstep( 0.8, 0.98, max( abs( shadowCoord.x - 0.5 ), abs( shadowCoord.y - 0.5 ) ) * 2.0 ) );\n\t\t\treturn'));
 }
 
-export function createWorld(scene) {
-  scene.background = HAZE.clone();
-  // clear fight disc; haze reaches 63 % 28 + 290 m out (sky.js): the far zones of the 370 m valley stay silhouettes,
-  // the summit a dark shoulder under its beacon smoke from the Shu camp
-  scene.fog = new THREE.Fog(HAZE.clone(), 36, 330);
-  const sky = createSky();
-  scene.add(sky);
+/** 定軍山, built into its own group (root) under `scene`: { root, fires, update }. */
+function createDingjun(scene, sky) {
+  const root = new THREE.Group(); root.name = 'world-dingjun';
+  scene.add(root);
+  scene = root;                                                     // everything below lands in the battlefield's group
 
   const hemi = new THREE.HemisphereLight(0x9cafd4, 0x9a7a5c, 2.2);  // cool dusk-blue sky fill, warm dust bounce (shade reads blue, light gold)
   scene.add(hemi);
@@ -83,6 +82,7 @@ export function createWorld(scene) {
   const tmp = new THREE.Vector3();
   let t = 0;
   return {
+    root,
     fires: dressing.fires,
     update(dt, focus, game) {
       t += dt;
@@ -92,7 +92,7 @@ export function createWorld(scene) {
       tmp.set(Math.round(focus.x / step) * step, ground(focus.x, focus.z), Math.round(focus.z / step) * step);
       sun.target.position.copy(tmp);
       sun.position.copy(LIGHT_DIR).multiplyScalar(70).add(tmp);
-      sky.material.uniforms.uTime.value = t; GRASS_TIME.value = t;
+      GRASS_TIME.value = t;
       dressing.update(t, focus);
       castle.update(t);
       for (const id in open) open[id] += ((GATES[id].open ? 1 : 0) - open[id]) * Math.min(1, dt * 3);
@@ -121,4 +121,43 @@ export function createWorld(scene) {
       fill.target.position.set(focus.x, 0, focus.z); fill.position.set(focus.x - 21, 27, focus.z - 60);
     },
   };
+}
+
+/**
+ * Every battlefield under one scene, one shown at a time: { fires, use(id), update(dt, focus, game) }. use(id) makes
+ * map.js describe that field (useMap), builds its set on first use, hides the others (their lights too: a hidden
+ * light is out of every shader) and restores the shared sky and haze. fires is one array, refilled in place on a
+ * swap, so a module that took it once (vfx ember emitter) always reads the active field's fires. Swap only under
+ * cover (loading card, ink wipe): the first use of a field builds it synchronously and new light sets recompile.
+ */
+export function createWorlds(scene) {
+  const sky = createSky();
+  scene.add(sky);
+  const BUILD = { dingjun: createDingjun, chibi: createChibi };
+  const built = {}, fires = [];
+  let cur = null, id = null, t = 0;
+  const W = {
+    fires,
+    get id() { return id; },
+    use(next) {
+      const m = useMap(next);
+      if (m === id) return W;
+      id = m;
+      if (!built[id]) built[id] = BUILD[id](scene, sky);
+      for (const k in built) built[k].root.visible = k === id;
+      cur = built[id];
+      scene.background = HAZE.clone();
+      // clear fight disc; haze reaches 63 % 28 + 290 m out (sky.js): the far zones of the 370 m valley stay
+      // silhouettes, the summit a dark shoulder under its beacon smoke from the Shu camp
+      scene.fog = new THREE.Fog(HAZE.clone(), 36, 330);
+      fires.length = 0; fires.push(...cur.fires);
+      return W;
+    },
+    update(dt, focus, game) {
+      t += dt;
+      sky.material.uniforms.uTime.value = t;
+      cur.update(dt, focus, game);
+    },
+  };
+  return W.use('dingjun');
 }

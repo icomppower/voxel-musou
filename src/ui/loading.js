@@ -7,11 +7,18 @@
 // line; a tip (心得) and a gold brush-stroke progress bar with the current set-up stage along the bottom. No art (dev
 // entry): the plain background.
 // ctx in: { mode, char, art? }. main.js drives progress(p, zh?, en?) and ready(); nothing here touches the sim.
+import { mapInfo } from '../world/map.js';
 import { CHARS } from '../chars/index.js';
 import { replay } from './menu.js';
 import { difficulty } from '../core/difficulty.js';
 
 export const MODE = { story: ['第一章「定軍山」', 'Story · Chapter I · Mount Dingjun'], free: ['自由演武', 'Free battle · endless waves'] };
+/** [zh, en] for a flow ctx: the mode, and for a free battle the battlefield it is fought on (map.js). */
+export const modeLabel = (c) => {
+  if (c.mode !== 'free') return MODE[c.mode] || MODE.free;
+  const m = mapInfo(c.map);
+  return [`自由演武「${m.name.zh}」`, `Free battle · ${m.name.en}`];
+};
 // [zh, en, char id | undefined = any officer] — keep in step with the controls table (title.js CONTROLS)
 const TIPS = [
   ['連按 J 打出完整連擊，連擊中按 K 接蓄力技。', 'Tap J for the full combo; press K mid-combo for a charge attack.'],
@@ -41,7 +48,7 @@ export function createLoading(el) {
   const state = (zh, en) => { $('.l-state b').textContent = zh; $('.l-state small').textContent = en; };
   return {
     enter(c) {
-      const ch = CHARS[c.char] || CHARS.zhaoyun, [zh, en] = MODE[c.mode] || MODE.free;
+      const ch = CHARS[c.char] || CHARS.zhaoyun, [zh, en] = modeLabel(c);
       el.style.setProperty('--acc', ch.accent);
       $('.l-art').style.backgroundImage = c.art ? `url("${c.art}")` : 'none';
       el.classList.remove('ready'); replay(el, 'in');

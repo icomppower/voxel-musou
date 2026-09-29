@@ -6,14 +6,14 @@
 // vertical calligraphy beside the model. All data comes from CHARS / CHAR_ORDER (src/chars/index.js), nothing per-hero.
 // Input: hover only highlights a card; a click (tap) on a card focuses that officer (spin-in, info panel swaps), ↑/↓ /
 // d-pad too. Deploy = 出陣 button, Enter / A, or a double-click on the card that was already focused.
-// ctx in: { mode }. Deploy → ink wipe → flow.go('loading', { mode, char }) (loading.js); back → title.
+// ctx in: { mode, map? }. Deploy → ink wipe → flow.go('loading', { mode, map, char }) (loading.js); back → title.
 // 3D is render-only: view(scene, camera, focus, dt) runs after the gameplay camera rig while this screen is up.
 import * as THREE from 'three';
 import { CHARS, CHAR_ORDER, paintPortrait } from '../chars/index.js';
 import { sampleClip, POSE_SIZE } from '../hero/rig.js';
 import { createNav, sfx, inkWipe, wiping, afterWipe, stamp, clearStamp, replay } from './menu.js';
 import { SWASH, STAGE as TITLE } from './title.js';
-import { MODE } from './loading.js';
+import { modeLabel } from './loading.js';
 import { difficulty } from '../core/difficulty.js';
 import { dotTex, scatter, passPoint, standOfficer, poseOfficer } from './stage.js';
 
@@ -84,7 +84,7 @@ export function createSelect(el, flow) {
     busy = true;
     stamp($('.s-act'), '出陣');
     const id = CHAR_ORDER[cur];
-    setTimeout(() => inkWipe(() => flow.go('loading', { mode: ctx.mode, char: id })), 520);
+    setTimeout(() => inkWipe(() => flow.go('loading', { mode: ctx.mode, map: ctx.map, char: id })), 520);
   };
   const back = () => {
     if (busy) return;
@@ -173,7 +173,7 @@ export function createSelect(el, flow) {
     keyart(v) { keyart = v; },
     enter(c) {
       ctx = c; busy = false; armed = false; clearStamp($('.s-act'));
-      const [zh, en] = MODE[c.mode] || MODE.free;
+      const [zh, en] = modeLabel(c);
       const d = difficulty();
       $('.s-mode b').textContent = `${zh}・${d.zh}`; $('.s-mode small').textContent = `${en} · ${d.en}`;
       show(cur, true); replay(el, 'in');                   // header, roster and actions slide in as the ink uncovers

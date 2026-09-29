@@ -31,7 +31,7 @@
 // Reaction states (HURT..GETUP) are driven by src/combat; this module owns the rest.
 import { rng, hash01 } from '../core/rng.js';
 import { emit, on } from '../core/events.js';
-import { clampWalk, routeS, routeAt } from '../world/map.js';
+import { clampWalk, routeS, routeAt, MAP } from '../world/map.js';
 
 export const ST = { OFF: 0, IDLE: 1, ADVANCE: 2, GUARD: 3, ATTACK: 4, HURT: 5, KNOCK: 6, AIR: 7, DOWN: 8, GETUP: 9, DEAD: 10 };
 const isReacting = (s) => s >= ST.HURT && s <= ST.GETUP;
@@ -42,6 +42,8 @@ const SQ_HOLD = 1, SQ_MARCH = 2, SQ_HALT = 3, SQ_CHARGE = 4;
 
 // free-mode (arena) officers, in slot order
 const FREE_OFFICERS = [{ zh: '夏侯恩', en: 'XIAHOU EN' }, { zh: '晏明', en: 'YAN MING' }, { zh: '淳于導', en: 'CHUNYU DAO' }, { zh: '張郃', en: 'ZHANG HE' }];
+/** Free-mode officer name for officer slot k: the battlefield's own roster (map.js MAP.officers), else Dingjun's. */
+const officerName = (k) => { const o = MAP.officers || FREE_OFFICERS; return o[k % o.length]; };
 
 export const CROWD = {
   officers: 4,                  // officers the free-mode army fields (and brings back with the waves)
@@ -171,7 +173,7 @@ export function createCrowd(game, grunts) {
       if (i >= grunts + CROWD.officers) break;
       const a = rng.range(0, Math.PI * 2), d = rng.range(12, 30);
       place(i, Math.cos(a) * d, Math.sin(a) * d, false);
-      c.offName[i - grunts] = FREE_OFFICERS[(i - grunts) % FREE_OFFICERS.length];
+      c.offName[i - grunts] = officerName(i - grunts);
     }
   };
 
@@ -721,7 +723,7 @@ export function createCrowd(game, grunts) {
     // free mode: KO'd officers come back with the waves (story officers are named and stay down)
     for (const i of freeSlots(true)) {
       if (game.mode === 'story' || i >= grunts + CROWD.officers) break;
-      place(i, sx + rng.range(-2, 2), sz + rng.range(-2, 2), true); c.offName[i - grunts] = FREE_OFFICERS[(i - grunts) % FREE_OFFICERS.length];
+      place(i, sx + rng.range(-2, 2), sz + rng.range(-2, 2), true); c.offName[i - grunts] = officerName(i - grunts);
       break;
     }
     emit('crowd:wave', { x: sx, z: sz });

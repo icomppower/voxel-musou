@@ -4,7 +4,7 @@
 // you keep.
 //
 // Catalogue (emitter → payload fields):
-//  scenario      main     {mode, char}                                  after a battle reset
+//  scenario      main     {mode, char, map}                             after a battle reset (map: battlefield id)
 //  flow          main     {state, ctx}                                  flow state entered: title|select|prologue|battle|result
 //  attack:start  combo    {move, x,y,z, yaw, charge, tell}              a move begins (charge: C1–C6/jump charge;
 //                                                                        tell: frames until its first active frame)

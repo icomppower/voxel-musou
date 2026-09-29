@@ -423,6 +423,14 @@
   .t-dcard.lock .t-dline b { color: #e58a70; }
   .t-dbars { grid-template-columns: 1fr; gap: .8rem; margin-top: 1.4rem; }
   .t-dcard.lock .t-dbars { opacity: .4; }
+  /* battlefield panel (title.js setStg): free battle only, after the difficulty — the same layout, 定軍山 / 赤壁 and the
+     field's line on the card */
+  #title.stg .t-dpanel:not(.t-spanel), #title:not(.stg) .t-spanel { display: none; }
+  #title .t-stg button { padding: .5rem 0 .9rem 4rem; }
+  #title .t-stg b { font-size: 3.4rem; }
+  .t-stg button::before { top: 1.6rem; }
+  .t-stg .swash { bottom: 2.2rem; width: 20rem; }
+  .t-stg .ui-stamp { left: 12rem; top: -.4rem; }
 
   /* narrow windows (≤ 4:3): tighter band so the officers keep the right half */
   @media (max-aspect-ratio: 4/3) {

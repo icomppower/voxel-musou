@@ -10,8 +10,9 @@
 // tags projected beside each officer's head (hidden at ≤ 4:3), key/pad prompts along the bottom. First boot shows a
 // "press any key" card (also unlocks audio); returns go straight to the menu.
 // Menu: 第一章「定軍山」 / 自由演武 → the difficulty panel in place of the menu (初級 普通 上級 修羅 + a card: the tier's line and
-// 敵勢 / 敵將 / 傷害 pips; 修羅 shows its unlock rule while locked, core/difficulty.js), confirm → select {mode}, Esc back to
-// the menu · 操作說明 → controls panel (Esc back).
+// 敵勢 / 敵將 / 傷害 pips; 修羅 shows its unlock rule while locked, core/difficulty.js), confirm → select {mode} (the story);
+// 自由演武 goes on to the battlefield panel (定軍山 / 赤壁 + a card with the field's line), confirm → select {mode, map}.
+// Esc steps back a panel · 操作說明 → controls panel (Esc back).
 // Mouse: hover highlights an item, click activates it.
 // Screen contract: createTitle(el, flow) → { enter(ctx), exit(), view } (src/main.js header).
 import * as THREE from 'three';
@@ -22,6 +23,7 @@ import { createNav, sfx, inkWipe, wiping, afterWipe, stamp, clearStamp, replay }
 import { ground } from '../world/map.js';
 import { dotTex, scatter, passPoint, standOfficer, poseOfficer } from './stage.js';
 import { DIFFS, LOCK, unlocked, difficulty, setDifficulty } from '../core/difficulty.js';
+import { mapInfo } from '../world/map.js';
 
 // brush swash drawn under the focused item (revealed left → right) — one tapered stroke, dry tail
 export const SWASH = `<svg class="swash" viewBox="0 0 400 26" preserveAspectRatio="none" aria-hidden="true"><path d="M3 15C40 7 118 4 214 8
@@ -32,6 +34,11 @@ const ITEMS = [
   { go: 'free', zh: '自由演武', en: 'Free battle · endless waves' },
   { go: 'controls', zh: '操作說明', en: 'Controls' },
 ];
+// free-battle battlefields (map.js layouts), in menu order: the card's line under the name
+const STAGES = [
+  { id: 'dingjun', year: '219', line: ['漢水渡口，山道險隘，直搗魏營。', 'Ford the Han River and fight up the mountain pass to the Wei camp.'] },
+  { id: 'chibi', year: '208', line: ['東風驟起，連環船燒，火照赤壁。', "The east wind rises — Cao Cao's chained fleet burns under the Red Cliffs."] },
+].map((st) => ({ ...st, ...mapInfo(st.id) }));
 export const CONTROLS = [   // also the pause menu's table (main.js)
   ['移動', 'Move', '<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows', 'left stick'],
   ['攻擊', 'Attack', '<kbd>J</kbd> / left click — tap for the full combo', '<kbd>X</kbd> □'],
@@ -93,14 +100,18 @@ export function createTitle(el, flow) {
       <div class="t-dpanel"><nav class="t-menu t-dif">${DIFFS.map((d, i) => `<button data-d="${i}" style="--i:${i}"><b>${d.zh}<i class="t-lk">鎖</i></b><small>${d.en}</small>${SWASH}</button>`).join('')}</nav>
         <div class="t-dcard"><h3>難度<small>Difficulty</small></h3><p class="t-dline"><b></b><small></small></p>
           <ul class="s-stats t-dbars">${[['敵勢', 'Pressure'], ['敵將', 'Officers'], ['傷害', 'Damage']].map(([zh, en]) => `<li><b>${zh}</b><small>${en}</small><span>${'<i></i>'.repeat(5)}</span></li>`).join('')}</ul></div></div>
+      <div class="t-dpanel t-spanel"><nav class="t-menu t-stg">${STAGES.map((st, i) => `<button data-s="${i}" style="--i:${i}"><b>${st.name.zh}</b><small>${st.name.en} · ${st.year}</small>${SWASH}</button>`).join('')}</nav>
+        <div class="t-dcard t-scard"><h3>戰場<small>Battlefield</small></h3><p class="t-dline"><b></b><small></small></p></div></div>
     </div>
     <section class="t-ctl"><h2>操作說明<small>Controls</small></h2>
       <table>${CONTROLS.map(([zh, en, kb, pad]) => `<tr><th>${zh}<small>${en}</small></th><td>${kb}</td><td class="pad">${pad}</td></tr>`).join('')}</table>
       <p>Tap attack for the combo, press charge mid-combo for a finisher. Fill the gold gauge and unleash 無雙.</p></section>
     <footer class="ui-foot"></footer>`;
   const $ = (s) => el.querySelector(s), btns = [...el.querySelectorAll('.t-main button')], dbtns = [...el.querySelectorAll('.t-dif button')];
+  const sbtns = [...el.querySelectorAll('.t-stg button')];
   const tags = [...el.querySelectorAll('.t-tag')];
   let cur = 0, pre = true, ctl = false, busy = false, dcur = 1, dmode = null;   // dmode: the mode picked, while the difficulty panel is up
+  let scur = 0, smode = false;                          // smode: the battlefield panel is up (free battle, after the difficulty)
 
   const focus = (i, quiet) => {
     i = (i + btns.length) % btns.length;
@@ -110,7 +121,7 @@ export function createTitle(el, flow) {
   };
   const foot = () => {
     $('.ui-foot').innerHTML = ctl ? `<span><kbd>Esc</kbd><kbd class="pad">B</kbd>返回<small>Back</small></span>`
-      : `<span><kbd>↑</kbd><kbd>↓</kbd>選擇${dmode ? '難度' : ''}<small>Select</small></span><span><kbd>Enter</kbd><kbd class="pad">A</kbd>決定<small>Confirm</small></span>`
+      : `<span><kbd>↑</kbd><kbd>↓</kbd>選擇${smode ? '戰場' : dmode ? '難度' : ''}<small>Select</small></span><span><kbd>Enter</kbd><kbd class="pad">A</kbd>決定<small>Confirm</small></span>`
         + (dmode ? `<span><kbd>Esc</kbd><kbd class="pad">B</kbd>返回<small>Back</small></span>` : '');
   };
   const setCtl = (v) => { ctl = v; el.classList.toggle('ctl', v); foot(); };
@@ -132,16 +143,36 @@ export function createTitle(el, flow) {
     dbtns[dcur].classList.remove('on'); dfocus(DIFFS.indexOf(difficulty()), true);
     measure();                                          // the band widened: the key art glides right (the tiers slide in: CSS)
   };
+  // battlefield panel: the card shows the focused field's line
+  const sfocus = (i, quiet) => {
+    i = (i + sbtns.length) % sbtns.length;
+    if (i === scur && sbtns[i].classList.contains('on')) return;
+    scur = i; sbtns.forEach((b, k) => b.classList.toggle('on', k === i));
+    $('.t-scard .t-dline b').textContent = STAGES[i].line[0]; $('.t-scard .t-dline small').textContent = STAGES[i].line[1];
+    if (!quiet) sfx('move');
+  };
+  const setStg = (v) => {
+    smode = v; el.classList.toggle('stg', v); foot();
+    if (v) { sbtns[scur].classList.remove('on'); sfocus(scur, true); }
+    measure();
+  };
   const wake = () => { pre = false; el.classList.remove('pre'); sfx('ok'); };
   const ok = () => {
     if (busy) return;
     if (wiping()) return afterWipe(ok);
     if (pre) return wake();
     if (ctl) return back();
+    if (smode) {
+      busy = true;
+      stamp(sbtns[scur], '決');
+      return setTimeout(() => inkWipe(() => flow.go('select', { mode: 'free', map: STAGES[scur].id })), 380);
+    }
     if (dmode) {
       const d = DIFFS[dcur], mode = dmode;
       if (!unlocked(d)) return sfx('back');
-      setDifficulty(d); busy = true;
+      setDifficulty(d);
+      if (mode === 'free') { sfx('ok'); return setStg(true); }   // free battle: pick the battlefield next
+      busy = true;
       stamp(dbtns[dcur], '決');
       return setTimeout(() => inkWipe(() => flow.go('select', { mode })), 380);
     }
@@ -154,21 +185,22 @@ export function createTitle(el, flow) {
     if (wiping()) return afterWipe(back);
     if (pre) return wake();
     if (ctl) { sfx('back'); setCtl(false); }
+    else if (smode) { sfx('back'); setStg(false); }
     else if (dmode) { sfx('back'); setDif(null); measure(); }
   };
   // "press any key": any key wakes the menu and is swallowed (capture, before the menu driver would act on it too)
   let active = false;
   addEventListener('keydown', (e) => { if (active && pre && !e.metaKey && !e.ctrlKey) { e.stopImmediatePropagation(); e.preventDefault(); wake(); } }, true);
-  const nav = createNav({ move: (d) => { if (pre) wake(); else if (!ctl && !busy) dmode ? dfocus(dcur + d) : focus(cur + d); }, ok, back });
+  const nav = createNav({ move: (d) => { if (pre) wake(); else if (!ctl && !busy) smode ? sfocus(scur + d) : dmode ? dfocus(dcur + d) : focus(cur + d); }, ok, back });
 
   el.addEventListener('pointerover', (e) => {
     const b = e.target.closest('.t-menu button');
-    if (b && !pre && !ctl && !busy) b.dataset.d ? dfocus(+b.dataset.d) : focus(+b.dataset.i);
+    if (b && !pre && !ctl && !busy) b.dataset.s ? sfocus(+b.dataset.s) : b.dataset.d ? dfocus(+b.dataset.d) : focus(+b.dataset.i);
   });
   el.addEventListener('click', (e) => {
     if (pre) return wake();
     const b = e.target.closest('.t-menu button');
-    if (b) { if (ctl) back(); else { b.dataset.d ? dfocus(+b.dataset.d, true) : focus(+b.dataset.i, true); ok(); } }
+    if (b) { if (ctl) back(); else { b.dataset.s ? sfocus(+b.dataset.s, true) : b.dataset.d ? dfocus(+b.dataset.d, true) : focus(+b.dataset.i, true); ok(); } }
     else if (ctl && !e.target.closest('.t-ctl')) back();
   });
   // mouse parallax target (-1..1), eased in view()
@@ -373,7 +405,7 @@ export function createTitle(el, flow) {
   return {
     view,
     enter() {
-      busy = false; clearStamp(el); dmode = null; el.classList.remove('dif'); setCtl(false);
+      busy = false; clearStamp(el); dmode = null; smode = false; el.classList.remove('dif', 'stg'); setCtl(false);
       el.classList.toggle('pre', pre);
       focus(cur, true); btns[cur].classList.add('on');
       replay(el, 'in');                                                     // logo ink-in
