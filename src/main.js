@@ -231,7 +231,7 @@ const screens = {
 };
 // a win records the clear (上級 / 修羅 opens 修羅: unlock = the result screen announces it)
 on('story:end', (e) => {
-  const unlock = e.win && recordClear(game.diff);
+  const unlock = e.win && chapter(ctx.map).CHAPTER.unlocks && recordClear(game.diff);   // 修羅 opens on a 定軍山 clear only
   inkWipe(() => flow.go('result', { ...ctx, win: e.win, stats: e.stats, diff: game.diff, unlock }));
 });
 addEventListener('keydown', (e) => {

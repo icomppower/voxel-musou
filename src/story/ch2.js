@@ -1,5 +1,5 @@
 // 第二章「赤壁」 — chapter data for the Red Cliffs battlefield (world/map.js 'chibi'): speakers, the battle script
-// (BEATS, same format as ./ch1.js), the officers and the epilogue. No prologue cards: the loading card goes straight in.
+// (BEATS, same format as ./ch1.js), the officers, the prologue scroll over the Yangtze and the epilogue.
 // History (208 AD, 赤壁之戰): 孫權 and 劉備 ally against 曹操's southern campaign; 周瑜 commands, 諸葛亮 advises;
 // 黃蓋 feigns surrender and drives fire boats into the chained fleet on the east wind; the allies land and storm the
 // naval camp; 曹操 flees by 華容道. Played as either Shu officer: `hero` = the chosen one, `ally` = the other one.
@@ -43,7 +43,7 @@ export const CHAPTER = {
   label: ['第二章「赤壁」', 'Story · Chapter II · Red Cliffs'],
   head: '第二章 赤壁 · CHAPTER II · RED CLIFFS',
   allies: [{ x: -5, z: -108, n: 12, cols: 4 }, { x: 9, z: -108, n: 12, cols: 4 }],   // the landing party behind him
-  prologue: false,
+  prologue: true,
 };
 
 const NAG = { who: 'zhouyu', zh: '將軍莫急！前方敵勢未破，不可孤軍深入。', en: 'Not so fast, General! The way ahead isn\'t broken yet.' };
@@ -189,6 +189,62 @@ export const BEATS = [
     ],
   },
 ];
+
+// ---- prologue (prologue.js; format: ./ch1.js PROLOGUE): ink-scroll cards over the middle Yangtze, 208 AD.
+export const PROLOGUE = [
+  { cols: ['建安十三年秋', '曹操平定北方', '親率大軍南下'], en: 'Autumn, 208 AD. Master of the north, Cao Cao marches south at the head of his armies.',
+    show: ['wei1', 'changban', 'jiangling'], focus: [220, 300, 1.25] },
+  { cols: ['劉備兵敗長坂', '退守夏口', '孔明東說孫權'], en: 'Routed at Changban, Liu Bei falls back to Xiakou and sends Zhuge Liang east to win over Sun Quan.',
+    show: ['shu1', 'xiakou', 'river'], focus: [520, 300, 1.1] },
+  { cols: ['孫權拜周瑜為都督', '率水軍三萬', '與劉備共拒曹操'], en: 'Sun Quan makes Zhou Yu grand commander; thirty thousand marines sail to stand with Liu Bei.',
+    show: ['wu1', 'chaisang', 'chibi'], focus: [800, 580, 1.2] },
+  { cols: ['曹軍戰船首尾相連', '屯於烏林', '黃蓋獻火攻之計'], en: 'Cao Cao chains his warships bow to stern off Wulin. Huang Gai proposes fire.',
+    show: ['wei2', 'wulin', 'fleet'], focus: [540, 430, 1.35] },
+  { cols: ['東南風急', '火船齊發', '烈焰照赤壁'], en: 'The southeast wind rises, the fire boats are loosed, and the flames light the Red Cliffs.',
+    show: ['fire', 'flames'], focus: [600, 470, 1.5] },
+];
+
+// the handscroll map (prologue.js; format: ./ch1.js SCROLL): the Yangtze west → east across the paper, the Han joining
+// at 夏口 — every place left of x ≈ 1060, clear of the calligraphy card on the right — the red cliffs on the south bank facing 烏林, Cao Cao's chained fleet moored off the north bank
+const RIVER = 'M-20 470 C150 440 280 520 420 470 S560 420 640 440 S800 420 880 385 S1300 330 1620 300';
+const HAN = 'M760 -20 C780 120 850 250 835 392';
+const SHIPS = [0, 1, 2, 3, 4, 5].flatMap((i) => [0, 1].map((j) => [470 + i * 30 + j * 14, 418 + j * 20]));
+export const SCROLL = {
+  arrows: [
+    ['wei1', 'wei', 'M330 10 C310 140 220 250 150 326'],
+    ['shu1', 'shu', 'M262 205 C420 160 640 210 812 346'],
+    ['wu1', 'shu', 'M952 598 C870 600 760 596 660 552'],
+    ['wei2', 'wei', 'M180 452 C300 510 400 500 462 440'],
+    ['fire', 'fire', 'M670 566 C640 522 620 492 600 462'],
+  ],
+  land: (peaks) => `
+  <g class="pl-mtns" fill="url(#pl-mtn)" filter="url(#pl-ink)">
+    ${peaks([[90, 180, 1.1], [230, 160], [520, 170, .9], [700, 150, 1.1], [900, 175], [1340, 170, 1.2], [1500, 150, .9]], 110, 90)}
+    ${peaks([[120, 900, 1.2], [320, 880], [560, 905, 1.1], [760, 890, .9], [1080, 900, 1.2], [1280, 885]], 130, 100)}
+  </g>
+  <g class="pl-mark" data-id="chibi" fill="url(#pl-cliff)" filter="url(#pl-ink)">${peaks([[560, 560, .8], [620, 548, 1.2], [690, 562, .9]], 110, 60)}</g>
+  <g class="pl-mark" data-id="river" filter="url(#pl-ink)" fill="none" stroke-linecap="round">
+    <path d="${RIVER}" stroke="#6f7c78" stroke-width="46" opacity=".35"/><path d="${RIVER}" stroke="#46524f" stroke-width="9" opacity=".7"/>
+    <path d="${HAN}" stroke="#6f7c78" stroke-width="24" opacity=".3"/><path d="${HAN}" stroke="#46524f" stroke-width="5" opacity=".6"/>
+  </g>
+  <g class="pl-mark" data-id="fleet" filter="url(#pl-ink)">
+    <path d="M${SHIPS.map(([x, y]) => `${x + 9} ${y + 3}`).join(' L')}" fill="none" stroke="#24160b" stroke-width="2" opacity=".6"/>
+    ${SHIPS.map(([x, y]) => `<rect x="${x}" y="${y}" width="18" height="7" rx="2" fill="#2b1d12"/>`).join('')}
+  </g>
+  <g class="pl-mark late" data-id="flames" filter="url(#pl-ink)">
+    ${SHIPS.filter((_, i) => i % 3 !== 1).map(([x, y], i) => `<path d="M${x + 2} ${y} Q${x + 9} ${y - 30 - (i % 4) * 6} ${x + 16} ${y}Z" fill="#d2601a" opacity=".85"/>`).join('')}
+    <ellipse cx="550" cy="420" rx="120" ry="44" fill="#e08a2a" opacity=".22"/>
+  </g>`,
+  labels: `
+    <g class="pl-mark wei" data-id="jiangling"><rect x="130" y="330" width="32" height="32" rx="3"/><text x="70" y="410">江陵</text></g>
+    <g class="pl-mark" data-id="changban"><text class="sm" x="200" y="215">長坂</text></g>
+    <g class="pl-mark" data-id="xiakou"><rect x="818" y="352" width="34" height="34" rx="3"/><text x="866" y="382">夏口</text></g>
+    <g class="pl-mark" data-id="chaisang"><rect x="946" y="580" width="34" height="34" rx="3"/><text x="900" y="560">柴桑</text></g>
+    <g class="pl-mark" data-id="chibi"><text x="580" y="640">赤壁</text></g>
+    <g class="pl-mark wei" data-id="wulin"><text x="440" y="370">烏林</text><text class="sm" x="580" y="370">曹操</text></g>
+    <g class="pl-mark" data-id="river"><text class="sm river" x="200" y="560">長 江</text></g>`,
+  stamp: { small: '第二章', big: '赤壁', seal: '火燒連環', en: 'CHAPTER II · RED CLIFFS' },
+};
 
 // ---- result screen epilogue (win), branched on the hero
 export const EPILOGUE = {

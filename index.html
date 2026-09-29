@@ -644,6 +644,7 @@
   #prologue .pl-mark { opacity: .42; transition: opacity 1s; }
   #prologue .pl-mark.on { opacity: .8; }
   #prologue .pl-mark.hot { opacity: 1; }
+  #prologue .pl-mark.late:not(.on) { opacity: 0; }          /* not even faintly before its card (the fleet's flames) */
   #prologue .pl-labels text { font: 700 46px var(--brush); fill: #24160b; stroke: rgba(232,214,178,.75); stroke-width: 7px; paint-order: stroke; }
   #prologue .pl-labels text.sm { font-size: 32px; }
   #prologue .pl-labels text.river { fill: #3d4b48; letter-spacing: 14px; }
@@ -658,6 +659,8 @@
   #prologue .pl-arw.wei > path { stroke: var(--wei); }
   #prologue .pl-arw.shu .hd { fill: var(--shu); }
   #prologue .pl-arw.wei .hd { fill: var(--wei); }
+  #prologue .pl-arw.fire > path { stroke: #d2601a; }
+  #prologue .pl-arw.fire .hd { fill: #d2601a; }
   #prologue .pl-arw .hd { opacity: 0; }
   #prologue .pl-arw.on > path { stroke-dashoffset: 0; transition: stroke-dashoffset 1.7s cubic-bezier(.5,0,.3,1) .5s; }
   #prologue .pl-arw.on .hd { opacity: 1; transition: opacity .25s 2s; }
