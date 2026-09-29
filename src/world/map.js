@@ -26,6 +26,14 @@
 //                                                        two piers out to the fleet
 //   曹軍水寨  Cao's naval camp    z   62 …  134   h 1.4  palisade, tents, the command tower (帥), a pier to the flagship
 //
+// 漢水 (Han River, 219 AD) — 第四章 only: the same 漢中 country as 定軍山 (its terrain builder and palette, terrain.js
+// HANSHUI_PROFILE in hanshui.js), re-dressed for Cao Cao's counter-attack; the Han River at the far end under a bluff.
+//   北山      Beishan grain depot  z -162 …  -70   h 0    Cao's grain stacks (five gates 'grain1'…'grain5': a
+//                                                        closed gate is a standing stack, open = burnt)
+//   包圍圈    the encirclement     z  -72 …   40   h 1→4  a basin closing to a 16 m chokepoint (z ≈ 26)
+//   趙雲營    Zhao Yun's camp      z   42 …   98   h 4    palisade across its south face, gate 'campGate' at x 0
+//   漢水岸    bluff over the Han   z   96 …  180   h 4→10 road up to the bluff; the river below it (+X, and north)
+//
 // Units: metres, +Z = "up the mountain" (camera yaw 0 looks along +Z). Sim y everywhere is HEIGHT ABOVE GROUND:
 // ground(x, z) is only added by the render side (hero view, crowd view, camera focus, HUD tags, vfx), so every sim
 // height test (airborne, hitbox yMax, enemy reach) keeps working on a slope.
@@ -40,6 +48,8 @@ export const CAMP_H = 12, SUMMIT_H = 28;      // Dingjun plateau heights (m): th
 export const WATER_Y = -0.2;                  // Han River surface (river bed: -0.45 at the fords, -1.4 in the pools)
 export const YANGTZE_Y = 0.05;                // 赤壁: the Yangtze's surface (its bed falls to YANGTZE_BED off the bank)
 const YANGTZE_BED = -2.6, YANGTZE_X = 16;     // 赤壁: everything off the walkable ground east of x = 16 is river
+export const HAN_Y = -1.2;                    // 漢水: the river's surface under the bluff (its bed falls to HAN_BED)
+const HAN_BED = -4.6;
 
 /** The active battlefield: { id, name {zh, en}, zones, hq [x, z] (the enemy HQ the minimap pins), officers? (free-mode
  *  officer names), fleet? (赤壁's ships) }. Replaced in place by useMap(). */
@@ -199,7 +209,54 @@ const CHIBI = {
   spawn: (mode) => (mode === 'story' ? { x: 2, z: -100, yaw: 0, tilt: 0 } : { x: 0, z: 0, yaw: 0, tilt: 0 }),
 };
 
-const LAYOUTS = { dingjun: DINGJUN, chibi: CHIBI };
+// ---------------------------------------------------------------- 漢水
+// Grain stacks on 北山 (centres; each a 3.2 m square gate), the camp palisade either side of its gate, and the camp's
+// solid set pieces (command tent, drum stand, watchtower).
+export const HAN_GRAIN = [[-26, -132], [24, -124], [-18, -102], [20, -93], [-2, -84]];
+const HAN_SOLID = [[-31, 42.5, -6, 45.5], [6, 42.5, 31, 45.5], [-22, 70, -12, 80], [9, 64, 13, 68], [21, 50, 25, 54]];
+/** 漢水 water: the river east of the bluff road and north of the bluff, off the walkable ground. */
+const hanRiver = (x, z) => (x > 40 && z > 100) || z > 178;
+const HANSHUI = {
+  map: {
+    id: 'hanshui',
+    name: { zh: '漢水', en: 'Han River' },
+    hq: [10, 160],
+    zones: [
+      { id: 'beishan', name: { zh: '北山糧屯', en: 'Beishan Grain Depot' }, x: 0, z: -116, w: 96, d: 92 },
+      { id: 'pass', name: { zh: '包圍圈', en: 'The Encirclement' }, x: 0, z: -16, w: 80, d: 108 },
+      { id: 'camp', name: { zh: '趙雲營', en: "Zhao Yun's Camp" }, x: 0, z: 70, w: 64, d: 56 },
+      { id: 'bank', name: { zh: '漢水岸', en: 'Bluff over the Han' }, x: 8, z: 140, w: 80, d: 80 },
+    ],
+  },
+  bounds: [-112, -190, 112, 204],
+  pieces: [
+    { id: 'depot', rect: [-46, -162, 46, -70], h: 0, edge: 3 },
+    { id: 'neck', path: [[0, -72, 16, 0], [0, -52, 15, 0.6]], edge: 2 },
+    { id: 'ring', ell: [0, -18, 36, 34], h: (x, z) => 0.6 + Math.max(0, z + 52) / 50, edge: 3 },
+    { id: 'choke', path: [[0, 12, 12, 1.8], [0, 26, 8, 3.2], [0, 40, 10, 4]], edge: 1.5 },
+    { id: 'camp', rect: [-30, 42, 30, 98], h: 4 },
+    { id: 'road', path: [[0, 96, 10, 4], [4, 112, 11, 6.5], [8, 126, 13, 9.2]], edge: 1.5 },
+    { id: 'bluff', ell: [10, 152, 32, 28], h: 10, edge: 2 },
+  ],
+  props: HAN_SOLID,
+  carve: HAN_SOLID,
+  riverZ: () => 1e9,
+  fords: [],
+  /** Off the walkable ground on the river side the bank falls away under the bluff to the river bed. */
+  cut(E, x, z) {
+    if (hanRiver(x, z) && E.s < 0) E.h -= smooth(0, 6, -E.s) * (E.h - HAN_BED);
+  },
+  water: (x, z) => hanRiver(x, z) && walkIn(x, z) < 0.3,
+  route: [[0, -150], [0, -110], [0, -72], [0, -40], [0, -10], [0, 14], [0, 30], [0, 44], [0, 70], [0, 96], [4, 112], [8, 126], [10, 150]],
+  gates: {
+    ...Object.fromEntries(HAN_GRAIN.map(([x, z], k) => [`grain${k + 1}`, { rect: [x - 1.6, z - 1.6, x + 1.6, z + 1.6], open: true, name: { zh: '糧堆', en: 'Grain stack' } }])),
+    campGate: { rect: [-6, 42.5, 6, 45.5], open: true, name: { zh: '營門', en: 'Camp Gate' } },
+  },
+  // story: at the foot of 北山, facing the depot; free: the middle of the depot
+  spawn: (mode) => (mode === 'story' ? { x: 0, z: -154, yaw: 0, tilt: 0 } : { x: 0, z: -110, yaw: 0, tilt: 0 }),
+};
+
+const LAYOUTS = { dingjun: DINGJUN, chibi: CHIBI, hanshui: HANSHUI };
 /** Battlefields a free battle can be fought on, in menu order (ids of LAYOUTS). */
 export const MAP_IDS = Object.keys(LAYOUTS);
 /** Name of a battlefield by id, without switching to it (menus). */
@@ -327,10 +384,11 @@ export const ground = (x, z) => bilerp(HGT, x, z);
 // start) resets them, so the story closes what it needs in its reset(). The active layout's gates (赤壁 has none).
 export const GATES = {};
 let GATE_LIST = [];
-/** Open / close a gate by id ('pass' | 'weiCamp' | 'summit'). Sim: call from story.reset / story.step only. */
+/** Open / close a gate by id (定軍山 'pass' | 'weiCamp' | 'summit'; 漢水 'grain1'…'grain5' | 'campGate'). Sim: call
+ *  from story.reset / story.step only. */
 export function setGate(id, open) { if (GATES[id]) GATES[id].open = !!open; }
 
-/** Make battlefield `id` ('dingjun' | 'chibi') the one every export describes (its grids are built on first use).
+/** Make battlefield `id` ('dingjun' | 'chibi' | 'hanshui') the one every export describes (its grids are built on first use).
  *  Only while the screen is covered: the sim and every render module read the new field from the next call on.
  *  Returns the active id. */
 export function useMap(id) {

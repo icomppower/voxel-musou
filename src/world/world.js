@@ -12,6 +12,7 @@ import { createRiver } from './river.js';
 import { buildDressing } from './dressing.js';
 import { WALL_Z, GATE_X, CAMP_H, GATES, ground, smooth, useMap } from './map.js';
 import { createChibi } from './chibi.js';
+import { createHanshui } from './hanshui.js';
 
 // burning wrecks on the field, near the walkable edges so the fight stays clear: [x, z, scale]
 const FIELD_FIRES = [[-33, -64, 1.2], [32, -58, 1.1], [-30, 8, 1.3], [30, -8, 1.2], [-22, -28, 1.0], [24, 24, 1.1], [15, 40, 1.0],
@@ -133,7 +134,7 @@ function createDingjun(scene, sky) {
 export function createWorlds(scene) {
   const sky = createSky();
   scene.add(sky);
-  const BUILD = { dingjun: createDingjun, chibi: createChibi };
+  const BUILD = { dingjun: createDingjun, chibi: createChibi, hanshui: createHanshui };
   const built = {}, fires = [];
   let cur = null, id = null, t = 0;
   const W = {
