@@ -214,8 +214,9 @@ const CHIBI = {
 // solid set pieces (command tent, drum stand, watchtower).
 export const HAN_GRAIN = [[-26, -132], [24, -124], [-18, -102], [20, -93], [-2, -84]];
 const HAN_SOLID = [[-31, 42.5, -6, 45.5], [6, 42.5, 31, 45.5], [-22, 70, -12, 80], [9, 64, 13, 68], [21, 50, 25, 54]];
-/** 漢水 water: the river east of the bluff road and north of the bluff, off the walkable ground. */
-const hanRiver = (x, z) => (x > 40 && z > 100) || z > 178;
+/** 漢水's river side: east of the bluff road and north of the bluff (off the walkable ground there, the bank falls to
+ *  the river bed; the terrain grows no rock over it). */
+export const hanRiver = (x, z) => (x > 40 && z > 100) || z > 178;
 const HANSHUI = {
   map: {
     id: 'hanshui',
@@ -246,7 +247,7 @@ const HANSHUI = {
   cut(E, x, z) {
     if (hanRiver(x, z) && E.s < 0) E.h -= smooth(0, 6, -E.s) * (E.h - HAN_BED);
   },
-  water: (x, z) => hanRiver(x, z) && walkIn(x, z) < 0.3,
+  water: (x, z) => hanRiver(x, z) && ground(x, z) < HAN_Y + 0.3,   // the bluff's lip is dry ground, 11 m over the river
   route: [[0, -150], [0, -110], [0, -72], [0, -40], [0, -10], [0, 14], [0, 30], [0, 44], [0, 70], [0, 96], [4, 112], [8, 126], [10, 150]],
   gates: {
     ...Object.fromEntries(HAN_GRAIN.map(([x, z], k) => [`grain${k + 1}`, { rect: [x - 1.6, z - 1.6, x + 1.6, z + 1.6], open: true, name: { zh: '糧堆', en: 'Grain stack' } }])),

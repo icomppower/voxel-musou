@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { SUN_DIR, SKY_UP } from './sky.js';
 import { buildTerrain, GRASS_TIME } from './terrain.js';
-import { TERRAIN as G, GATES, HAN_GRAIN, HAN_Y, ground, smooth, walkIn, isWater, routeNear } from './map.js';
+import { TERRAIN as G, GATES, HAN_GRAIN, HAN_Y, ground, smooth, walkIn, hanRiver, routeNear } from './map.js';
 import { boxesGeometry, shade } from '../core/voxel.js';
 import { makeRng, hash01 } from '../core/rng.js';
 import { lit, watchtower, figureGeometry, paperLantern } from './castle.js';
@@ -24,7 +24,7 @@ const FIELD_FIRES = [[-40, -150, 1.1], [38, -80, 1.0], [-30, -30, 1.2], [30, 4, 
 const HANSHUI_PROFILE = {
   rise: { depot: 8, neck: 16, ring: 22, choke: 28, camp: 3, road: 12, bluff: 5 },
   column: () => undefined,
-  skip: (x, z) => isWater(x, z),
+  skip: (x, z) => hanRiver(x, z),
   pave: (x, z) => (x > -28 && x < 28 && z > 48 && z < 96 ? 0.35 : 0),     // the camp's worn parade ground
   beaten: (x, z) => (x > -31 && x < 31 && z > 42 && z < 98 ? 0.25 : Math.hypot(x, z + 110) < 34 ? 0.55 : 1),   // camp, depot
   tuftZ: [-176, 196], rubbleX: [-50, 50], rubbleZ: [-160, 176],
