@@ -21,9 +21,10 @@ No build step: plain ES modules, Three.js r186 vendored in `vendor/three/`, dete
 
 ## Features
 
-- Two playable officers with their own movesets, models and Musou:
+- Three playable officers with their own models and Musou:
   - **Zhao Yun** — spear: normal combos (N1–N6), charge attacks (C1–C6), Musou 蒼龍破陣 with a dragon
   - **Huang Zhong** — bow: limb slashes and point-blank shots, charge shots (fan, barrage, arrow rain, fire arrow), aim mode, Musou 百步穿楊 (a flaming volley and a giant arrow)
+  - **Guan Yu** (free battle) — 青龍偃月刀 glaive: N1–N3 and C1 of his own (the rest borrowed from Zhao Yun's spear set for now), Musou 青龍偃月・天崩 (a vortex whirlwind that drags the army in, a leap, and a jade crescent falling from the sky to cleave the field)
 - Story mode, Chapter I 「定軍山」: prologue, scripted battle with dialogue, objectives, enemy officers and gates, result screen; play it as either officer (the other one joins the dialogue)
 - Free battle: endless waves on the battlefield of your choice:
   - **定軍山 Mount Dingjun** — the Han River ford and the mountain pass below the Wei camp
@@ -71,9 +72,10 @@ Keyboard and mouse, or a gamepad.
 | URL parameter | Description |
 | --- | --- |
 | `?enemies=N` | Number of enemy soldiers, 0–2000 (default 300) |
-| `?go=free\|story&char=zhaoyun\|huangzhong` | Skip the menus straight into a battle |
+| `?go=free\|story&char=zhaoyun\|huangzhong\|guanyu` | Skip the menus straight into a battle |
 | `&map=dingjun\|chibi` | With `?go=free`: the battlefield (default `dingjun`) |
 | `?hq` | Pin full render quality (no automatic MSAA downgrade) |
+| `?musou` | Start every battle with a full Musou gauge, refilled after each Musou (for trying them out) |
 
 ## Project layout
 

@@ -44,6 +44,9 @@ import { difficulty, recordClear } from './core/difficulty.js';
 
 const params = new URLSearchParams(location.search);
 const ENEMIES = Math.max(0, Math.min(2000, params.get('enemies') ? Number(params.get('enemies')) | 0 : 300));
+// ?musou (or a preview build's window.VOXEL_MUSOU_PREVIEW.musou): every battle starts with a full Musou gauge and it
+// refills after each Musou — for trying an officer's Musou without earning it first
+const FREE_MUSOU = params.has('musou') || !!globalThis.VOXEL_MUSOU_PREVIEW?.musou;
 
 const canvas = document.getElementById('c');
 let vw = innerWidth, vh = innerHeight;
@@ -125,6 +128,7 @@ function startBattle({ char = 'zhaoyun', mode = 'free', map = 'dingjun' } = {}) 
   menu.querySelector('.t').innerHTML = `${ch.name.zh}<i>${ch.seal}</i>`;
   menu.querySelector('.sub').innerHTML = `戰局暫停・${MAP.name.zh}・${game.diff.zh}<small>Battle paused · ${MAP.name.en} · ${game.diff.en}</small>`;
   document.title = `${ch.name.zh} — Voxel Musou`;
+  if (FREE_MUSOU) game.hero.musou = game.hero.musouMax;
   emit('scenario', { mode, char: ch.id, map: MAP.id });
 }
 
@@ -239,6 +243,7 @@ addEventListener('keydown', (e) => {
   if (state === 'battle' && !paused && e.code === 'Escape' && !e.defaultPrevented) setPaused(true);
 });
 addEventListener('blur', () => { if (state === 'battle') setPaused(true); });
+if (FREE_MUSOU) on('musou:end', () => { game.hero.musou = game.hero.musouMax; });
 
 // ---- loop
 let acc = 0, last = performance.now();
@@ -257,5 +262,8 @@ const frame = (now) => {
 
 const dev = params.get('go');
 // the page opens under full ink (index.html): the first screen is built and compiled under it, then the ink sweeps off
-inkBoot(() => dev ? flow.go('battle', { mode: dev === 'story' ? 'story' : 'free', char: params.get('char') || 'zhaoyun', map: params.get('map') || 'dingjun' }) : flow.go('title'));
+// a preview build (window.VOXEL_MUSOU_PREVIEW = { start: 'select', map }) opens on officer select for a free battle
+const preview = globalThis.VOXEL_MUSOU_PREVIEW;
+inkBoot(() => dev ? flow.go('battle', { mode: dev === 'story' ? 'story' : 'free', char: params.get('char') || 'zhaoyun', map: params.get('map') || 'dingjun' })
+  : preview?.start === 'select' ? flow.go('select', { mode: 'free', map: preview.map || 'dingjun' }) : flow.go('title'));
 requestAnimationFrame(frame);

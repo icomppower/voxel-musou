@@ -10,6 +10,7 @@
 //                      copy: [2 short lines] of vertical calligraphy shown while the Musou plays
 //   portrait {face, pal} 20×20 pixel portrait: rows of palette keys ('.' = clear), shared by the HUD badge, dialogue and
 //                      select screen (paintPortrait below)
+//   story              false = free battle only (the story script has no lines for this officer yet); default true
 //   kit                see below
 // }
 //
@@ -33,6 +34,7 @@
 // }
 import { ZHAOYUN_KIT } from './zhaoyun/kit.js';
 import { HUANGZHONG_KIT } from './huangzhong/kit.js';
+import { GUANYU_KIT } from './guanyu/kit.js';
 
 const ZY_FACE = [
   '....................',
@@ -79,6 +81,31 @@ const HZ_FACE = [
   '.YYYYYYyGgGyYYYYY...',
   'YYyyYYYYyGyYYYYyyY..',
 ];
+// Guan Yu: green hood with a gold band and jade stone, the red face, heavy brows, phoenix eyes, the long black beard over
+// jade lamellar
+const GY_FACE = [
+  '....................',
+  '.......HHHHH........',
+  '.....HHHHHHHHH......',
+  '....HHHhhHHHHHHH....',
+  '...HHHHHHHHHHHHHH...',
+  '...HYYYYYYJYYYYYHh..',
+  '...HHFFFFFFFFFFHHhh.',
+  '...HBBBFFFFFFBBBHh..',
+  '...HFFBEEFFEEBFFHH..',
+  '...HFFEwEFFEwEFFHH..',
+  '...HFFFFFFfFFFFFHH..',
+  '....FFFFFFfFFFFFH...',
+  '....FBBBFFFFBBBFH...',
+  '....BBBBBMMBBBBB....',
+  '....BBBBBBBBBBBB....',
+  '.....BBBBBBBBBB.....',
+  '...WWWBBBBBBBBWWW...',
+  '.WWWWWWBBBBBBWWWWW..',
+  'WWggWWWWBBBBWWWWggW.',
+  'WWWWWWWWWBBWWWWWWWWW',
+];
+const GY_PAL = { H: '#2a6040', h: '#1a4029', Y: '#c9a049', J: '#2fbf8a', F: '#b3472f', f: '#7e2c20', B: '#141016', E: '#140c0c', w: '#ffffff', M: '#5a1a14', W: '#2f6e46', g: '#4e9466' };
 const PAL = { K: '#1d1514', k: '#4a3834', S: '#efc3a0', s: '#c38a6c', E: '#140c0c', M: '#7e3a2e', T: '#3fb8b0', t: '#1f5f5c',
   W: '#efe8de', w: '#ffffff', G: '#dcd6cc', g: '#9a948a', R: '#b3261e', r: '#6e1712', Y: '#d9a53a', y: '#8a5a1a' };
 
@@ -119,8 +146,27 @@ export const CHARS = {
     portrait: { face: HZ_FACE, pal: PAL },
     kit: HUANGZHONG_KIT,
   },
+  guanyu: {
+    id: 'guanyu',
+    name: { zh: '關羽', en: 'Guan Yu' }, courtesy: { zh: '雲長', en: 'Yunchang' }, seal: '武聖',
+    title: { zh: '美髯公', en: 'Lord of the Magnificent Beard' }, motto: '武聖 · 青龍偃月 · 義薄雲天',
+    weapon: { zh: '青龍偃月刀', en: 'Green Dragon Crescent Blade' },
+    bio: {
+      zh: ['河東解良人，赤面長髯，義重如山。', '溫酒斬華雄，千里走單騎，威震華夏。'],
+      en: ['A man of Jieliang with a red face and a long beard, whose loyalty never bent.', 'He cut down Hua Xiong before the wine went cold and rode a thousand li alone.'],
+    },
+    stats: { atk: 5, def: 4, speed: 2, range: 4 }, musou: { zh: '青龍偃月・天崩', en: 'Crescent Moon, the Sky Falls' }, accent: '#4fc08d',
+    lines: {
+      intro: { zh: '關雲長在此！插標賣首之徒，還不退下！', en: 'Guan Yunchang stands here! Stand aside, or lose your heads!' },
+      musouEnd: { zh: '青龍偃月，所向無敵！', en: 'Before the Crescent Blade, none stand!' },
+      copy: ['偃月一落', '天崩地裂'],
+    },
+    portrait: { face: GY_FACE, pal: GY_PAL },
+    story: false,
+    kit: GUANYU_KIT,
+  },
 };
-export const CHAR_ORDER = ['zhaoyun', 'huangzhong'];
+export const CHAR_ORDER = ['zhaoyun', 'huangzhong', 'guanyu'];
 
 /** Paint a char's 20×20 portrait into a canvas (width/height 20; scale it with CSS, image-rendering: pixelated). */
 export function paintPortrait(cv, char) {

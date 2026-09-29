@@ -92,7 +92,10 @@ export function createSelect(el, flow) {
     busy = true; sfx('back');
     inkWipe(() => flow.go('title'));
   };
-  const nav = createNav({ move: (d) => { if (!busy) show(cur + d); }, ok: go, back });
+  // the roster for this mode: an officer with story: false (src/chars/index.js) is hidden in story mode
+  const off = (i) => cards[i].style.display === 'none';
+  const step = (i, d) => { for (let k = 0; k < cards.length; k++) { i = (i + d + cards.length) % cards.length; if (!off(i)) return i; } return cur; };
+  const nav = createNav({ move: (d) => { if (!busy) show(step(cur, d)); }, ok: go, back });
 
   // click a card = focus it; a double-click deploys only if the first click landed on the already-focused card
   let armed = false;
@@ -173,6 +176,8 @@ export function createSelect(el, flow) {
     keyart(v) { keyart = v; },
     enter(c) {
       ctx = c; busy = false; armed = false; clearStamp($('.s-act'));
+      cards.forEach((b, i) => { b.style.display = c.mode === 'story' && CHARS[CHAR_ORDER[i]].story === false ? 'none' : ''; });
+      if (off(cur)) { cards[cur].classList.remove('on'); cur = step(cur, 1); }
       const [zh, en] = modeLabel(c);
       const d = difficulty();
       $('.s-mode b').textContent = `${zh}・${d.zh}`; $('.s-mode small').textContent = `${en} · ${d.en}`;
