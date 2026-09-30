@@ -6,7 +6,7 @@
 //   game.actors = createActors(game)
 //   reset()                 battle start (main.js startBattle, after the crowd, before story.reset)
 //   step()
-//   spawn(key, def) → actor def = { kit: CHARS id | a kit object, role: 'boss' | 'ally' | 'npc', at: {x, z} | [x, z], yaw (default:
+//   spawn(key, def) → actor def = { kit: CHARS id | NPCS id (src/chars/npc) | a kit object, role: 'boss' | 'ally' | 'npc', at: {x, z} | [x, z], yaw (default:
 //                           facing the hero), hp (boss: × game.diff.officerHp), name {zh, en}, seal (red seal glyphs), poise,
 //                           attacks (default: kit.bossAttacks, else SPEAR), scale (× the kit body scale: kit.scale, else HERO_SCALE), retreatAt
 //                           (HP fraction where a boss breaks off instead of falling), intro {zh, en} (HUD spawn banner),
@@ -26,7 +26,9 @@
 //         poise (dmg × 1.6 heavy × 0.5 Musou) breaks into a stagger (the swing is cancelled, free hits). Enraged under
 //         ACTOR.rage HP: wind-ups × rageK, shorter pauses. At retreatAt he breaks off and runs (actor:retreat), at 0 HP he
 //         falls (actor:down); either counts as the hero's KO. Blows × game.diff.dmg on the hero (i-frames after one even
-//         through armour: hero.hurt), and they throw the Shu soldiers caught in them (combat.npcStrike).
+//         through armour: hero.hurt), and they throw the Shu soldiers caught in them (combat.npcStrike). A kit with a
+//         `taunt` clip (the NPC kits) squares up first: ACTOR.taunt sf of it on the spot, facing the hero, on spawn and when
+//         a holding boss is called in (join); a stagger cuts it short.
 //   ally  friend, invulnerable by default. Keeps 4-8 m off the hero on his flank; picks Wei grunts ≥ 3 m off him (his ring
 //         stays his, formations are left alone) and fights them with the kit's own moves (n1 → n2 …, now and then the
 //         charge off the string); they land through combat.npcStrike (the reactions of a hero blow, no hero credit, never
@@ -55,6 +57,7 @@ import { rng } from '../core/rng.js';
 import { emit } from '../core/events.js';
 import { clampWalk } from '../world/map.js';
 import { CHARS } from '../chars/index.js';
+import { NPCS } from '../chars/npc/index.js';
 import { moveClip, lungeAt } from '../hero/moveset.js';
 import { cadence, LOCO } from '../hero/locomotion.js';
 import { ST, CROWD, wrap } from '../crowd/crowd.js';
@@ -65,7 +68,7 @@ export const ACTOR = {
   hp: 3000, allyHp: 1000, poise: 320, stagger: 70, rage: 0.4, rageK: 0.75,
   walk: 3.4, run: 6.6, turn: 6, r: 0.55,                   // m/s, rad/s, body radius (× scale)
   pause: [40, 80], ragePause: [14, 30], far: 0.025,        // sf between a boss's attacks; chance per sf of a long-range one
-  intro: 70, leash: 7, heroIF: 40,                         // sf before his first swing; hold post reach; hero i-frames per blow
+  intro: 70, taunt: 90, leash: 7, heroIF: 40,             // sf before his first swing; taunt sf; hold post reach; hero i-frames
   follow: [4, 8], allyRun: 8.2, catchUp: 9.6, scan: 9, reach: 2.6, heroGap: 3, fightR: 16, holdR: 6,
   string: [3, 5], rest: [20, 50], chip: 0.25, chargeP: 0.3,
   retreat: 36, retreatMax: 420, downGone: 600,
@@ -133,7 +136,7 @@ export function createActors(game) {
   A.spawn = (key, d = {}) => {
     const old = byKey.get(key);
     if (old) A.list.splice(A.list.indexOf(old), 1);
-    const ch = typeof d.kit === 'string' ? CHARS[d.kit] : null, kit = ch ? ch.kit : d.kit || CHARS.zhaoyun.kit;
+    const ch = typeof d.kit === 'string' ? CHARS[d.kit] || NPCS[d.kit] : null, kit = ch ? ch.kit : d.kit || CHARS.zhaoyun.kit;
     const role = d.role || 'ally', foe = role === 'boss', h = game.hero;
     const at = Array.isArray(d.at) ? d.at : d.at ? [d.at.x, d.at.z] : [h.x, h.z + 6], [x, z] = clampWalk(at[0], at[1]);
     const hp = Math.round((d.hp ?? (foe ? ACTOR.hp : ACTOR.allyHp)) * (foe ? game.diff.officerHp : 1)), poise = d.poise ?? ACTOR.poise;
@@ -143,7 +146,7 @@ export function createActors(game) {
       scale: d.scale ?? (foe ? 1.15 : 1), x, z, y: 0, yaw: d.yaw ?? Math.atan2(h.x - x, h.z - z),
       hp, hpMax: hp, poise, poiseMax: poise, retreatAt: d.retreatAt || 0, invuln: d.invuln ?? !foe, dead: false,
       state: 'idle', stT: 0, mode: foe ? 'join' : 'follow', hx: x, hz: z, rx: x, rz: z, far: false,
-      attacks: foe ? prepAttacks(kit, d.attacks || kit.bossAttacks || SPEAR) : null, atk: null, seq: 0, pause: 0, cd: foe ? ACTOR.intro : 0,
+      attacks: foe ? prepAttacks(kit, d.attacks || kit.bossAttacks || SPEAR) : null, atk: null, taunt: foe && kit.clips.taunt ? ACTOR.taunt : 0, seq: 0, pause: 0, cd: foe ? ACTOR.intro : 0,
       move: null, moveT: 0, moveSeq: 0, keyBase: 0, str: 0, tgt: -1, tgtA: null,
       speed: 0, phase: 0, flash: 0, lastHit: -1, chipKey: -1,
       anim: { id: 'idle', t: 0, k: 0, seq: -2, mv: null, mt: 0 },   // render reads: clip id, clip time, run speed share, blend seq
@@ -159,6 +162,7 @@ export function createActors(game) {
     if (!a || a.dead || a.state === 'gone') return;                   // (a beaten one is out of the fight for good)
     const p = at ? (Array.isArray(at) ? at : [at.x, at.z]) : null;
     if (what === 'retreat') { retreat(a, p, false); return; }
+    if (a.isFoe && a.mode === 'hold' && what !== 'hold' && a.kit.clips.taunt) a.taunt = ACTOR.taunt;   // called in: he squares up
     a.mode = what === 'hold' ? 'hold' : a.isFoe ? 'join' : 'follow';
     if (what === 'hold') [a.hx, a.hz] = p ? clampWalk(p[0], p[1]) : [a.x, a.z];
     if (a.state === 'retreat') set(a, 'idle');
@@ -171,7 +175,7 @@ export function createActors(game) {
     let stagger = false;
     if (!off && !fell && a.state !== 'stagger' && a.y < 0.3) {       // (never mid-leap: he would drop out of the air)
       a.poise -= dmg * (heavy ? 1.6 : 1) * (musou ? 0.5 : 1);
-      if (a.poise <= 0) { a.poise = a.poiseMax; a.atk = null; set(a, 'stagger'); stagger = true; }
+      if (a.poise <= 0) { a.poise = a.poiseMax; a.atk = null; a.taunt = 0; set(a, 'stagger'); stagger = true; }
     }
     emit('actor:hit', { key: a.key, x: a.x, y: a.y + 1.3 * a.scale, z: a.z, dmg, heavy, stagger, hp: a.hp / a.hpMax });
     if (off) { a.hp = Math.max(1, a.hp); retreat(a, null, true); }
@@ -250,6 +254,7 @@ export function createActors(game) {
     if (a.state === 'attack') return attack(a);
     if (a.state === 'stagger') { if (a.stT >= ACTOR.stagger) set(a, 'idle'); return; }
     const h = game.hero, dx = h.x - a.x, dz = h.z - a.z, d = Math.hypot(dx, dz), face = Math.atan2(dx, dz);
+    if (a.taunt > 0 && !h.dead) { a.taunt--; turn(a, face, ACTOR.turn); return; }
     if (a.cd > 0) a.cd--;
     if (h.dead) { turn(a, face, ACTOR.turn); return; }
     if (a.mode === 'hold' && Math.hypot(h.x - a.hx, h.z - a.hz) > ACTOR.leash) {   // hero off his post: back to it
@@ -388,6 +393,7 @@ export function createActors(game) {
       const c = moveClip(a.kit.moves[a.move], a.moveT);
       an.id = c[0]; an.t = c[1]; an.seq = a.moveSeq * 16 + c[2]; an.mv = a.move; an.mt = a.moveT;
     } else if (a.state === 'stagger' || a.state === 'down') { an.id = 'hurt'; an.t = Math.min(1, a.stT / 20); an.seq = -3; }
+    else if (a.taunt > 0) { an.id = 'taunt'; an.t = 1 - a.taunt / ACTOR.taunt; an.seq = -4; }
     else if (a.speed > 0.5) {
       a.phase = (a.phase + Math.PI * cadence(a.speed) * DT) % (Math.PI * 128);
       an.id = 'run'; an.t = a.phase; an.k = Math.min(1, a.speed / LOCO.runSpeed); an.seq = -1;
