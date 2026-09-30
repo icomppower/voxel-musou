@@ -42,6 +42,8 @@ import { ZHAOYUN_KIT } from './zhaoyun/kit.js';
 import { HUANGZHONG_KIT } from './huangzhong/kit.js';
 import { ZHANGFEI_KIT } from './zhangfei/kit.js';
 import { FACE as ZF_FACE, PAL as ZF_PAL } from './zhangfei/model.js';
+import { GUANYU_KIT } from './guanyu/kit.js';
+import { FACE as GY_FACE, PAL as GY_PAL } from './guanyu/model.js';
 
 const ZY_FACE = [
   '....................',
@@ -147,8 +149,27 @@ export const CHARS = {
     portrait: { face: ZF_FACE, pal: ZF_PAL },
     kit: ZHANGFEI_KIT,
   },
+  guanyu: {
+    id: 'guanyu', side: { zh: '蜀', en: 'Shu Han' },
+    name: { zh: '關羽', en: 'Guan Yu' }, courtesy: { zh: '雲長', en: 'Yunchang' }, seal: '武聖',
+    title: { zh: '美髯公', en: 'Lord of the Magnificent Beard' }, motto: '河東關雲長 · 溫酒斬將 · 義貫古今',
+    weapon: { zh: '青龍偃月刀', en: 'Green Dragon Blade' },
+    bio: {
+      zh: ['河東解良人，面如重棗，丹鳳眼，臥蠶眉。', '溫酒斬華雄，千里走單騎，義薄雲天。'],
+      en: ['Of Hedong: a face red as a ripe jujube, phoenix eyes, silkworm brows.',
+        'He slew Hua Xiong before the wine went cold and rode a thousand li alone.'],
+    },
+    stats: { atk: 5, def: 4, speed: 3, range: 4 }, musou: { zh: '青龍偃月・天斬', en: 'Sky Cleaver' }, accent: '#3cae6e',
+    lines: {
+      intro: { zh: '關雲長在此！插標賣首之輩，速來受死！', en: 'Guan Yunchang is here! Come, you who wear your heads for sale!' },
+      musouEnd: { zh: '忠義在心，青龍在手！', en: 'Loyalty in my heart, the Green Dragon in my hand!' },
+      copy: ['青龍一揮', '千軍盡斬'],
+    },
+    portrait: { face: GY_FACE, pal: GY_PAL },
+    kit: GUANYU_KIT,
+  },
 };
-export const CHAR_ORDER = ['zhangfei', 'zhaoyun', 'huangzhong'];   // campaign order: liubei guanyu zhangfei zhaoyun zhugeliang huangzhong lubu
+export const CHAR_ORDER = ['liubei', 'guanyu', 'zhangfei', 'zhaoyun', 'zhugeliang', 'huangzhong', 'lubu'].filter((id) => CHARS[id]);
 
 /** Paint a char's 20×20 portrait into a canvas (width/height 20; scale it with CSS, image-rendering: pixelated). */
 export function paintPortrait(cv, char) {

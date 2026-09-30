@@ -9,7 +9,7 @@
 //  · the voxel azure dragon (path shared with the sim hits: dragonAt), shedding light-voxel shards, dissolving at the end
 //  · finisher lightning ring band (DW9 ring wave), calligraphy cut-in (無雙 + seal) over the close-up (overlay.js, frame-driven)
 // Zhao Yun's look (ZY_LOOK) is the default; another kit on the shared timeline (a scripted Musou: src/musou/scripted.js,
-// with mu.toWorld / waveR / t / active) passes its own look: { dragon: false = no dragon, cut: {sub, seal, css} (overlay.js),
+// with mu.toWorld / waveR / t / active) passes its own look: { dragon: false = no dragon | a COL-like palette (+ shell, ink) = his own dragon, cut: {sub, seal, css} (overlay.js),
 // pal: its light colours (keys below; bolt null = no lightning) } — src/chars/defkit.js.
 import * as THREE from 'three';
 import { on } from '../core/events.js';
@@ -56,7 +56,7 @@ const COL = {
   belly: [0.4, 0.72, 0.92], fin: [0.42, 0.95, 1.3], eye: [3.0, 2.2, 0.5],
   horn: [1.4, 1.15, 0.6], white: [1.0, 1.12, 1.2], whisker: [0.6, 1.15, 1.55], mouth: [0.32, 0.01, 0.03],
 };
-function dragonParts() {
+function dragonParts(COL) {                                 // COL: the look's dragon palette
   const parts = [];            // { seg (-1 head), off, size, dir?, col, dyn? }
   const add = (seg, off, size, col, dir, dyn) => parts.push({ seg, off, size, col, dir, dyn });
   for (let k = 0; k < NS; k++) {
@@ -159,14 +159,15 @@ export function createMusouView(parent, game, camera, look = ZY_LOOK) {
   };
 
   // ---- dragon
-  const parts = dragonParts();
+  const DC = look.dragon === true ? COL : look.dragon || COL;   // B4: a kit's own dragon palette (Guan Yu's jade 青龍)
+  const parts = dragonParts(DC);
   const dragon = instanced(scene, shadedBox(), new THREE.MeshBasicMaterial({ vertexColors: true, fog: false }), parts.length);
   const local = parts.map((p) => new THREE.Matrix4().compose(_p.set(...p.off), _q.setFromUnitVectors(FWD, p.dir ? _v.set(...p.dir).normalize() : FWD), _s.set(...p.size)));
   parts.forEach((p, i) => dragon.setColorAt(i, _c.setRGB(...p.col)));
   // glow shell: every dragon voxel again, 1.3× larger, additive rim light (view-facing faces faint, grazing faces hot), so
   // the azure body carries a living halo and reads as a spirit of light against the crowd instead of flat blue boxes
   const shell = instanced(scene, new THREE.BoxGeometry(1, 1, 1), new THREE.ShaderMaterial({
-    uniforms: { uCol: { value: new THREE.Color(0.2, 0.75, 1.2) }, uK: { value: 1 } },
+    uniforms: { uCol: { value: new THREE.Color(...(DC.shell || [0.2, 0.75, 1.2])) }, uK: { value: 1 } },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
     vertexShader: `varying float vRim, vNear;
       void main() {
@@ -182,7 +183,7 @@ export function createMusouView(parent, game, camera, look = ZY_LOOK) {
   // fx r3 acc: an ink outline (the voxels again, 1.24× larger — outside the glow shell, back faces only, near-black navy) so at contact the head
   // (jaw, eyes, horns) and the scaled body read as a solid silhouette against the launched fan and the sky, not as cyan
   // translucent blobs inside their own glow
-  const ink = instanced(scene, new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0x03081a, side: THREE.BackSide, fog: false }), parts.length);
+  const ink = instanced(scene, new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: DC.ink ?? 0x03081a, side: THREE.BackSide, fog: false }), parts.length);
   const INK = new THREE.Matrix4().makeScale(1.24, 1.24, 1.12);
   // fx r5: drawn after the contact rays quad (transparent list, higher renderOrder), so the rays erupt behind the dragon
   // instead of washing its face pale teal (the quad sits 3.5 m past the contact point, the head rears 5–8 m out)
