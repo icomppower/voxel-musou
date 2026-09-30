@@ -49,11 +49,11 @@ export function createTwinView(parent, game) {
   const box = new THREE.BoxGeometry(1, 1, 1);
   const inst = (mat) => { const m = new THREE.InstancedMesh(box, mat, N * 2); m.frustumCulled = false; root.add(m); return m; };
   const core = inst(new THREE.MeshBasicMaterial({ fog: false }));
-  const shell = inst(new THREE.MeshBasicMaterial({ fog: false, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const shell = inst(new THREE.MeshBasicMaterial({ fog: false, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false }));
   shell.renderOrder = 6;
   for (let d = 0; d < 2; d++) for (let i = 0; i < N; i++) {
     const k = i < NB ? (i & 1 ? 0.78 : 1) * (1 + 0.5 * Math.max(0, 1 - i / 6)) : i < NB + NF ? 1.2 : 1.35;
-    core.setColorAt(d * N + i, _c.setRGB(COL[d][0] * k, COL[d][1] * k, COL[d][2] * k));
+    core.setColorAt(d * N + i, _c.setRGB(COL[d][0] * k * 0.55, COL[d][1] * k * 0.55, COL[d][2] * k * 0.55));   // (under the bloom: the blocks keep their form)
     shell.setColorAt(d * N + i, _c.setRGB(COL[d][0] * 0.6, COL[d][1] * 0.6, COL[d][2] * 0.6));
   }
 

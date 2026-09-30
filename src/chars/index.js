@@ -104,7 +104,7 @@ export const CHARS = {
       en: ['A man of Zhuo descended from Prince Jing of Zhongshan, his earlobes reaching his shoulders, his hands his knees.',
         'Sworn brother to Guan Yu and Zhang Fei in the peach garden, he won the people with benevolence.'],
     },
-    stats: { atk: 3, def: 3, speed: 4, range: 3 }, musou: { zh: '昭烈・雙龍斬', en: 'Twin Dragon Slash' }, accent: '#6cb24e',
+    stats: { atk: 3, def: 3, speed: 4, range: 3 }, musou: { zh: '昭烈・雙龍斬', en: 'Twin Dragons' }, accent: '#6cb24e',
     lines: {
       intro: { zh: '吾乃中山靖王之後，劉玄德！', en: 'I am Liu Xuande, descendant of Prince Jing of Zhongshan!' },
       musouEnd: { zh: '為天下蒼生，此戰必勝！', en: 'For the people of the realm — this battle is ours!' },
