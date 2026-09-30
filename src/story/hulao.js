@@ -11,7 +11,6 @@
 // 'hulao' (the gate's face, z 136), 'outworks' (華雄's palisade gap), 'wine' (the wine table in the camp).
 import { CHARS } from '../chars/index.js';
 
-const kit = (id, alt) => (CHARS[id] ? id : alt);   // B-FALLBACK: liubei / guanyu / lubu kits land with their lanes — drop at integration
 
 export const CH = {
   id: 'hulao', num: { zh: '第一章', en: 'CHAPTER I' }, title: { zh: '虎牢關', en: 'Hulao Gate' },
@@ -54,7 +53,7 @@ export const OFF = {
 };
 
 // 呂布 (boss actor, C5) and the brothers who come to fight him beside the hero (ally actors, invulnerable)
-const LUBU = { kit: kit('lubu', 'zhaoyun'), role: 'boss', at: ['hulao', 0, 16], yaw: Math.PI, hp: 4400, poise: 460, retreatAt: 0.25,
+const LUBU = { kit: 'lubu', role: 'boss', at: ['hulao', 0, 16], yaw: Math.PI, hp: 4400, poise: 460, retreatAt: 0.25,
   name: { zh: '呂布', en: 'LÜ BU' }, seal: '呂' };
 const BRO = {
   liubei: { kit: 'liubei', role: 'ally', name: { zh: '劉備', en: 'LIU BEI' }, seal: '劉' },

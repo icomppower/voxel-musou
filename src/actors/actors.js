@@ -7,7 +7,7 @@
 //   reset()                 battle start (main.js startBattle, after the crowd, before story.reset)
 //   step()
 //   spawn(key, def) → actor def = { kit: CHARS id | NPCS id (src/chars/npc) | a kit object, role: 'boss' | 'ally' | 'npc', at: {x, z} | [x, z], yaw (default:
-//                           facing the hero), hp (boss: × game.diff.officerHp), name {zh, en}, seal (red seal glyphs), poise,
+//                           facing the hero), hp (boss: × game.diff.officerHp), name {zh, en}, seal (red seal glyphs), poise (default: kit.bossPoise, else ACTOR.poise),
 //                           attacks (default: kit.bossAttacks, else SPEAR), scale (× the kit body scale: kit.scale, else HERO_SCALE), retreatAt
 //                           (HP fraction where a boss breaks off instead of falling), intro {zh, en} (HUD spawn banner),
 //                           invuln (default: every role but the boss) }. A key already on the field is replaced.
@@ -139,7 +139,7 @@ export function createActors(game) {
     const ch = typeof d.kit === 'string' ? CHARS[d.kit] || NPCS[d.kit] : null, kit = ch ? ch.kit : d.kit || CHARS.zhaoyun.kit;
     const role = d.role || 'ally', foe = role === 'boss', h = game.hero;
     const at = Array.isArray(d.at) ? d.at : d.at ? [d.at.x, d.at.z] : [h.x, h.z + 6], [x, z] = clampWalk(at[0], at[1]);
-    const hp = Math.round((d.hp ?? (foe ? ACTOR.hp : ACTOR.allyHp)) * (foe ? game.diff.officerHp : 1)), poise = d.poise ?? ACTOR.poise;
+    const hp = Math.round((d.hp ?? (foe ? ACTOR.hp : ACTOR.allyHp)) * (foe ? game.diff.officerHp : 1)), poise = d.poise ?? kit.bossPoise ?? ACTOR.poise;   // (kit.bossPoise: the kit's boss profile)
     const a = {
       id: ++ids, key, role, isFoe: foe, kit, char: ch, intro: d.intro || null,
       name: d.name || (ch ? ch.name : { zh: '敵將', en: 'OFFICER' }), seal: d.seal ?? (ch ? ch.seal : '將'),
