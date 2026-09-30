@@ -57,8 +57,8 @@ export const OFF = {
 const LUBU = { kit: kit('lubu', 'zhaoyun'), role: 'boss', at: ['hulao', 0, 16], yaw: Math.PI, hp: 4400, poise: 460, retreatAt: 0.25,
   name: { zh: '呂布', en: 'LÜ BU' }, seal: '呂' };
 const BRO = {
-  liubei: { kit: kit('liubei', 'zhaoyun'), role: 'ally', name: { zh: '劉備', en: 'LIU BEI' }, seal: '劉' },
-  guanyu: { kit: kit('guanyu', 'huangzhong'), role: 'ally', name: { zh: '關羽', en: 'GUAN YU' }, seal: '關' },
+  liubei: { kit: 'liubei', role: 'ally', name: { zh: '劉備', en: 'LIU BEI' }, seal: '劉' },
+  guanyu: { kit: 'guanyu', role: 'ally', name: { zh: '關羽', en: 'GUAN YU' }, seal: '關' },
   zhangfei: { kit: 'zhangfei', role: 'ally', name: { zh: '張飛', en: 'ZHANG FEI' }, seal: '張' },
 };
 const bros = (a, b) => ({ [a]: { ...BRO[a], at: ['hulao', -7, -26] }, [b]: { ...BRO[b], at: ['hulao', 7, -26] } });

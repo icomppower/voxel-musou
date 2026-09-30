@@ -229,7 +229,7 @@ export const BEATS = [
     heal: 0.3, morale: 0.15, retire: true, hush: true, waves: false,
     banner: { html: '<em>烏林</em> 大營攻破！', en: 'The camp at Wulin is taken!', dur: 170 },
     // 曹操 (npc actor: he never fights) stands before his pavilion and laughs at his enemies — then the ambush
-    actors: { caocao: { kit: 'zhaoyun', role: 'npc', at: ['tent', 0, -9], name: { zh: '曹操', en: 'CAO CAO' }, seal: '操' } },   // B-FALLBACK: kit 'caocao' (B8)
+    actors: { caocao: { kit: 'caocao', role: 'npc', at: ['tent', 0, -9], name: { zh: '曹操', en: 'CAO CAO' }, seal: '操' } },
     actor: { key: 'caocao', do: 'hold', at: ['tent', 0, -9] },
     obj: { zh: '追擊曹操', en: 'Pursue Cao Cao', go: 'caocao' },
     limit: { z: ['mouth', 0, 2], nag: NAG_WOOD },
@@ -241,7 +241,7 @@ export const BEATS = [
   },
   {
     when: [{ near: [['tent', 0, -9], 18] }, { wait: 14 * 60 }],
-    actors: { zhangliao: { kit: 'zhaoyun', role: 'boss', at: ['mouth', 0, -4], hp: 2600, name: { zh: '張遼', en: 'ZHANG LIAO' }, seal: '遼',   // B-FALLBACK: kit 'zhangliao' (B8)
+    actors: { zhangliao: { kit: 'zhangliao', role: 'boss', at: ['mouth', 0, -4], hp: 2600, name: { zh: '張遼', en: 'ZHANG LIAO' }, seal: '遼',
       retreatAt: 0.3, intro: { zh: '威震逍遙 張文遠', en: 'Zhang Wenyuan, terror of the south' } } },
     actor: { key: 'caocao', do: 'retreat', at: ['road', 0, 0] },
     banner: { html: '<em>張遼</em> 斷後！', en: 'Zhang Liao covers the retreat!', dur: 170, big: true },

@@ -9,9 +9,6 @@
 // Map (world/maps/changban.js): anchors 'bridge' (the deck's middle, z -128), 'gan', 'mizhu', 'well', 'cao' (曹操's post
 // on 景山); gate 'jingshan' (never opened: 曹操 stays out of reach); sets 'well' / 'bridge'.
 
-// B-FALLBACK: lane B8's NPC kit 'caocao' replaces this at integration
-const CAOCAO_KIT = 'huangzhong';
-
 export const CH = {
   id: 'changban', num: { zh: '第二章', en: 'CHAPTER II' }, title: { zh: '長坂坡', en: 'Changban' },
   seal: '當陽之戰', era: { zh: '建安十三年', en: '208 AD' }, map: 'changban',
@@ -66,7 +63,7 @@ const ZY = ['zhaoyun'], ZF = ['zhangfei'];
 const south = (z) => ({ near: [['bridge', 0, z + 128 - 1000], 1000] });
 const DECK = ['bridge', 0, 8];                  // the north foot of the bridge (z -120)
 const CAO = ['cao', 0, 0];
-const CAOCAO = { kit: CAOCAO_KIT, role: 'npc', at: CAO, yaw: Math.PI, name: { zh: '曹操', en: 'CAO CAO' }, seal: '曹' };
+const CAOCAO = { kit: 'caocao', role: 'npc', at: CAO, yaw: Math.PI, name: { zh: '曹操', en: 'CAO CAO' }, seal: '曹' };
 // the defend point sits at the bridge's SOUTH foot: the hero fights on the deck / north foot, and only soldiers who get
 // past him drain it (on the deck itself his own ring would drain it — a hero standing his ground lost the bridge in 40 s)
 const BRIDGE = { key: 'bridge', at: ['bridge', 0, -9], r: 5, name: { zh: '長坂橋', en: 'Changban Bridge' } };
