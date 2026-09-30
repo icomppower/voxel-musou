@@ -6,6 +6,7 @@
 //   name {zh, en}, courtesy {zh, en}, seal (red HUD seal: 2 glyphs), title {zh, en} (epithet), motto (HUD intro subline)
 //   weapon {zh, en}, bio {zh: [2 lines], en: [2 lines]}, stats {atk, def, speed, range} 1-5, musou {zh, en} (Musou name)
 //   accent             CSS colour of the character (select screen / HUD highlights)
+//   side?              {zh, en} faction on the select screen (default 蜀 Shu Han)
 //   lines              voice lines the HUD / story show: intro (battle start), musouEnd (shout after the Musou) {zh, en};
 //                      copy: [2 short lines] of vertical calligraphy shown while the Musou plays
 //   portrait {face, pal} 20×20 pixel portrait: rows of palette keys ('.' = clear), shared by the HUD badge, dialogue and
@@ -42,6 +43,8 @@ import { ZHAOYUN_KIT } from './zhaoyun/kit.js';
 import { HUANGZHONG_KIT } from './huangzhong/kit.js';
 import { ZHANGFEI_KIT } from './zhangfei/kit.js';
 import { FACE as ZF_FACE, PAL as ZF_PAL } from './zhangfei/model.js';
+import { LUBU_KIT } from './lubu/kit.js';
+import { FACE as LB_FACE, PAL as LB_PAL } from './lubu/model.js';
 
 const ZY_FACE = [
   '....................',
@@ -147,8 +150,27 @@ export const CHARS = {
     portrait: { face: ZF_FACE, pal: ZF_PAL },
     kit: ZHANGFEI_KIT,
   },
+  lubu: {
+    id: 'lubu', side: { zh: '群', en: 'Warlords' },
+    name: { zh: '呂布', en: 'Lü Bu' }, courtesy: { zh: '奉先', en: 'Fengxian' }, seal: '飛將',
+    title: { zh: '飛將', en: 'The Flying General' }, motto: '人中呂布 · 馬中赤兔 · 天下無雙',
+    weapon: { zh: '方天畫戟', en: 'Sky-Piercer Halberd' },
+    bio: {
+      zh: ['五原九原人，弓馬嫻熟，膂力過人，號為飛將。', '虎牢關前一戟當關，劉關張三英合戰，方纔戰他得住。'],
+      en: ['A rider of Jiuyuan on the northern frontier, peerless with bow and horse — they called him the Flying General.',
+        'Before Hulao Gate he held the pass alone with his halberd; it took Liu, Guan and Zhang together to hold him off.'],
+    },
+    stats: { atk: 5, def: 4, speed: 4, range: 4 }, musou: { zh: '天下無雙・神鬼亂舞', en: 'Peerless: Dance of Gods and Demons' }, accent: '#d8283c',
+    lines: {
+      intro: { zh: '呂奉先在此！爾等鼠輩，誰先來送死？', en: 'Lü Fengxian stands here! Which of you rats dies first?' },
+      musouEnd: { zh: '天下無雙者，唯我呂布一人！', en: 'Peerless under heaven — there is only Lü Bu!' },
+      copy: ['一戟橫掃', '天下無雙'],
+    },
+    portrait: { face: LB_FACE, pal: LB_PAL },
+    kit: LUBU_KIT,
+  },
 };
-export const CHAR_ORDER = ['zhangfei', 'zhaoyun', 'huangzhong'];   // campaign order: liubei guanyu zhangfei zhaoyun zhugeliang huangzhong lubu
+export const CHAR_ORDER = ['liubei', 'guanyu', 'zhangfei', 'zhaoyun', 'zhugeliang', 'huangzhong', 'lubu'].filter((id) => CHARS[id]);
 
 /** Paint a char's 20×20 portrait into a canvas (width/height 20; scale it with CSS, image-rendering: pixelated). */
 export function paintPortrait(cv, char) {
