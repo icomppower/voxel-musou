@@ -156,7 +156,7 @@ function head() {
     ...symH(3, 6, 5, 7, 5, 6, C.skinH),                                            // cheekbones
     ...symH(5, 8, 2, 5, 5, 6, C.skinD),                                            // hollow cheeks
     // 丹鳳眼: long narrow slits, iris half hidden under a heavy lid, the outer corner sweeping up
-    ...symH(2, 7, 8, 11, 5, 6, C.skinD),
+    ...symH(2, 7, 7, 8, 5, 6, C.skinD),                                            // under-eye shade (y 10: bare lid under the brow)
     ...symH(2, 6, 8, 9, 5, 6, C.scl), ...symH(3, 5, 8, 9, 5, 6, C.iris), ...symH(3, 4, 8, 9, 5, 6, C.eye),
     ...symH(2, 6, 9, 10, 5, 6, C.eye), ...symH(6, 7, 9, 11, 5, 6, C.eye),
     // 臥蠶眉: thick, raised, the outer ends lifting
