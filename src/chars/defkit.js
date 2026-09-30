@@ -23,6 +23,8 @@
 //   heat?      [hex, base, charge, musou]: the blade mesh (weapon mat 'blade') glows `hex`, emissive base → + charge while a
 //              charge winds up, + musou through his Musou
 //   view?(model, hero, dt, rig)   extra per-frame render hook (after IK, before the chains)
+//   fxView?(scene, game, camera) → { update(dt), dispose() }   his own render layer beside the shared kit view (built
+//              with his Musou view, e.g. 諸葛亮's 八卦 sigils: src/chars/zhugeliang/fx.js)
 // }
 // moveset = {
 //   moves() → move table (hero/moves.js format incl. proj / roar / beam / rain windows); must have n1 c1 dash jatk jc,
@@ -88,7 +90,8 @@ export function defKit(def, ms) {
     createMusou: (game) => createScriptedMusou(game, ms.musou),
     createMusouView(scene, game, camera) {
       const a = createMusouView(scene, game, camera, look), b = createKitView(scene, game, camera, { sig: def.sig, blade });
-      return { update(dt) { a.update(dt); b.update(dt); }, dispose() { a.dispose(); b.dispose(); } };
+      const c = def.fxView?.(scene, game, camera);
+      return { update(dt) { a.update(dt); b.update(dt); c?.update(dt); }, dispose() { a.dispose(); b.dispose(); c?.dispose(); } };
     },
   };
 }

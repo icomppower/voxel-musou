@@ -42,6 +42,8 @@ import { ZHAOYUN_KIT } from './zhaoyun/kit.js';
 import { HUANGZHONG_KIT } from './huangzhong/kit.js';
 import { ZHANGFEI_KIT } from './zhangfei/kit.js';
 import { FACE as ZF_FACE, PAL as ZF_PAL } from './zhangfei/model.js';
+import { ZHUGELIANG_KIT } from './zhugeliang/kit.js';
+import { FACE as ZG_FACE, PAL as ZG_PAL } from './zhugeliang/model.js';
 
 const ZY_FACE = [
   '....................',
@@ -147,8 +149,27 @@ export const CHARS = {
     portrait: { face: ZF_FACE, pal: ZF_PAL },
     kit: ZHANGFEI_KIT,
   },
+  zhugeliang: {
+    id: 'zhugeliang', side: { zh: '蜀', en: 'Shu Han' },
+    name: { zh: '諸葛亮', en: 'Zhuge Liang' }, courtesy: { zh: '孔明', en: 'Kongming' }, seal: '臥龍',
+    title: { zh: '臥龍', en: 'The Sleeping Dragon' }, motto: '羽扇綸巾 · 運籌帷幄 · 決勝千里',
+    weapon: { zh: '白羽扇', en: 'White Feather Fan' },
+    bio: {
+      zh: ['琅琊陽都人，躬耕南陽，自比管仲、樂毅。', '先主三顧茅廬，隆中一對，天下三分。'],
+      en: ['A scholar of Langya who farmed at Nanyang and likened himself to the great ministers of old.',
+        'Liu Bei called on his cottage three times; in one talk at Longzhong he laid out the realm divided in three.'],
+    },
+    stats: { atk: 3, def: 2, speed: 3, range: 5 }, musou: { zh: '東風・八陣', en: 'East Wind · Eight Formations' }, accent: '#9c8cf0',
+    lines: {
+      intro: { zh: '東風已起，破敵正在今日。', en: 'The east wind has risen. Today the enemy breaks.' },
+      musouEnd: { zh: '運籌帷幄之中，決勝千里之外。', en: 'Plans laid in the tent decide battles a thousand li away.' },
+      copy: ['羽扇一揮', '八陣圖成'],
+    },
+    portrait: { face: ZG_FACE, pal: ZG_PAL },
+    kit: ZHUGELIANG_KIT,
+  },
 };
-export const CHAR_ORDER = ['zhangfei', 'zhaoyun', 'huangzhong'];   // campaign order: liubei guanyu zhangfei zhaoyun zhugeliang huangzhong lubu
+export const CHAR_ORDER = ['liubei', 'guanyu', 'zhangfei', 'zhaoyun', 'zhugeliang', 'huangzhong', 'lubu'].filter((id) => CHARS[id]);
 
 /** Paint a char's 20×20 portrait into a canvas (width/height 20; scale it with CSS, image-rendering: pixelated). */
 export function paintPortrait(cv, char) {

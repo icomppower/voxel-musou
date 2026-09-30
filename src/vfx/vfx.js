@@ -1025,7 +1025,7 @@ export function createVfx(scene, game, world) {
     if (!m) return;
     if (!m.air && h.y < 0.3) dustPuff(h.x + Math.sin(e.yaw) * 0.4, h.z + Math.cos(e.yaw) * 0.4, e.heavy ? 4 : 2, 1.8, 0.34, 0.08, 0.4);
     if (!hit) return;
-    if (hit.beam || hit.proj || hit.roar) return;           // the kit's own view draws these windows (src/chars/kitview.js)
+    if (hit.beam || hit.proj || hit.roar || hit.sigil) return;   // the kit's own view draws these windows (src/chars/kitview.js, sigil: zhugeliang/fx.js)
     const fx = Math.sin(e.yaw), fz = Math.cos(e.yaw), K = kp();
     const R = hit.range || hit.len || 4, charge = e.move[0] === 'c' || e.move === 'jc';   // light volumes = charge finishers only
     const tr = h.kit.trail;
@@ -1229,7 +1229,7 @@ export function createVfx(scene, game, world) {
         lastTick = tick;
         const m = h.kit.moves[h.move], t = h.moveT;
         for (const hit of m.hits) {
-          if (hit.shape !== 'line' || t < hit.f[0] || t > hit.f[1]) continue;
+          if (hit.shape !== 'line' || hit.sigil || t < hit.f[0] || t > hit.f[1]) continue;   // (a sigil's line box is ground, not a thrust)
           if (hit.every ? (t - hit.f[0]) % hit.every !== 0 : t !== hit.f[0]) continue;
           const fx = Math.sin(h.yaw), fz = Math.cos(h.yaw), off = (hit.off || 0) + 0.4;
           const y = Math.min(1.7, Math.max(0.7, tipNow.y)), rgb = hit.heavy ? [1.2, 1.9, 2.8] : [0.8, 1.3, 2.4];
