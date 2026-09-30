@@ -49,7 +49,7 @@ runPose(0, 0, RUN_REF);                                       // the shared run'
 
 /** Carry overlay: the spear channels keep the run's stride sway around the carry pose; grips / left arm come from it
  *  (a free left arm keeps the run's swing). */
-function carried(spec) {
+export function carried(spec) {                 // (also the NPC kits: src/chars/npc/kit.js)
   const C = P(spec), free = C[CH.lfree] > 0.5;
   return (out) => {
     for (let i = CH.spear; i < CH.spear + 6; i++) out[i] += C[i] - RUN_REF[i];

@@ -31,11 +31,11 @@ export const SPK = {
 
 // officers (crowd.spawnOfficer). HP: a default officer has 520 (≈ 5 full combos); the boss ≈ 4.5× that, so the
 // summit duel runs ~1.5-2 min with a Musou or two, like a DW8 commander.
+const YUAN_HP = 2400;                            // 夏侯淵: a boss actor (src/actors, NPC kit 'xiahouyuan'), × game.diff.officerHp
 export const OFF = {
   shang: { name: { zh: '夏侯尚', en: 'XIAHOU SHANG' }, hp: 650 },
   duxi: { name: { zh: '杜襲', en: 'DU XI' }, hp: 650 },
   zhanghe: { name: { zh: '張郃', en: 'ZHANG HE' }, hp: 1100 },
-  yuan: { name: { zh: '夏侯淵', en: 'XIAHOU YUAN' }, hp: 2400, boss: true },
   guard: { name: { zh: '親衛隊長', en: 'GUARD CAPTAIN' }, hp: 320 },
 };
 
@@ -143,7 +143,9 @@ export const BEATS = [
   },
   {
     when: { at: ['gate', 0, 6] },
-    officers: { yuan: { at: ['summit', 0, 0.2] } },
+    // 夏侯淵 takes the field before his pavilion and holds it (a boss actor: telegraphed blows, poise, the boss bar)
+    actors: { yuan: { kit: 'xiahouyuan', role: 'boss', at: ['summit', 0, 0.2], hp: YUAN_HP } },
+    actor: { key: 'yuan', do: 'hold' },
     squads: [{ at: ['summit', -0.55, -0.45], n: 18 }, { at: ['summit', 0.55, -0.4], n: 18 }],
     obj: { zh: '攻破山頂柵', en: 'Break through the summit barricade', go: SUMMIT_GATE },
     say: [{ who: 'soldier', zh: '擋住他！絕不能讓他靠近夏侯將軍！', en: 'Hold him! Don\'t let him near General Xiahou!' }],
@@ -156,11 +158,12 @@ export const BEATS = [
     obj: { zh: '擊破敵總大將 夏侯淵', en: 'Defeat the enemy commander, Xiahou Yuan', go: 'yuan' },
   },
 
-  // ---- 定軍山頂: 夏侯淵 (boss), the drums at half HP
+  // ---- 定軍山頂: 夏侯淵 (boss actor), the drums at half HP, the win on his fall (no retreat)
   {
     when: { at: ['summit', 0, -0.35] },           // z ≈ 182: over the barricade (the ramp below it tops out at z ≈ 177)
     skip: { down: 'yuan' },
     banner: { html: '敵總大將 <em>夏侯淵</em>', en: 'Enemy commander: Xiahou Yuan', dur: 150, big: true },
+    actor: { key: 'yuan', do: 'join' },          // he leaves his post: a taunt, then at the hero
     waves: true,
     say: [
       { who: 'yuan', huangzhong: ['白髮老兒，也敢來送死？', 'A white-haired old man, come here to die?'],
