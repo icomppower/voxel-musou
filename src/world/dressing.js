@@ -12,7 +12,11 @@ import { topAt, GRASS_TIME } from './terrain.js';
 import { SUN_DIR, NOISE_GLSL } from './sky.js';
 import { lensClear } from '../camera/occlusion.js';
 
-const WIND = new THREE.Vector3(0.75, 0, 0.55).normalize();   // blows up the valley, toward the castle's end
+// the wind (unit, xz): smoke, embers, flag yaw and the flames' lean follow it. buildDressing resets it to the default
+// (up the valley, toward 定軍山's castle end); a map may set it in dress() before its flags go up, and a set piece may
+// swing it at run time (赤壁's east wind: flags are re-aimed by the map, smoke / embers / flames follow on their own)
+const WIND0 = new THREE.Vector3(0.75, 0, 0.55).normalize();
+export const WIND = WIND0.clone();
 const frac = (x) => x - Math.floor(x);
 const FOCUS = { value: new THREE.Vector3() };   // the camera's focus (hero), for the reeds' sight line
 
@@ -135,7 +139,7 @@ function glowTexture() {
  *  only the core adds light, so 2-3 overlapping cards stay orange. instanceColor = [seed, intensity, -]; the card
  *  leans downwind at the tip and fades out within 7 m of the lens. */
 const FLAME_VS = /* glsl */`
-  uniform float uTime;
+  uniform float uTime; uniform vec3 uWind;
   varying vec2 vUv; varying vec3 vP; varying float vNear; flat varying float vGrid;
   void main() {
     vec3 base = instanceMatrix[3].xyz;
@@ -143,7 +147,7 @@ const FLAME_VS = /* glsl */`
     vec3 right = normalize(vec3(viewMatrix[0][0], 0.0, viewMatrix[2][0]) + vec3(1e-5, 0.0, 0.0));
     vec3 wp = base + right * position.x * w + vec3(0.0, (position.y + 0.5) * h, 0.0);
     float sw = sin(uTime * 2.7 + instanceColor.x * 40.0) * 0.6 + sin(uTime * 5.3 + instanceColor.x * 17.0) * 0.4;
-    wp.xz += vec2(0.8, 0.6) * uv.y * uv.y * h * (0.12 + 0.08 * sw);
+    wp.xz += uWind.xz * uv.y * uv.y * h * (0.12 + 0.08 * sw);
     vec4 mv = viewMatrix * vec4(wp, 1.0);
     vNear = smoothstep(2.5, 7.0, -mv.z);
     float bd = max(-(viewMatrix * vec4(base, 1.0)).z, 0.5);                 // per card (flat): no seams inside a card
@@ -195,7 +199,7 @@ function fireSystem(scene, list) {
     if (smoke) for (let i = 0; i < 30; i++) puffs.push({ x, y, z, s, g, ph: i / 30 + r.range(0, 0.02), sp: r.range(0.075, 0.095), ox: r.range(-0.8, 0.8), oz: r.range(-0.8, 0.8), rot: r.range(0, 6.28), v: r.range(0.8, 1.2) });
   }
   const uTime = { value: 0 };
-  const cm = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderMaterial({ vertexShader: FLAME_VS, fragmentShader: FLAME_FS, uniforms: { uTime },
+  const cm = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderMaterial({ vertexShader: FLAME_VS, fragmentShader: FLAME_FS, uniforms: { uTime, uWind: { value: WIND } },
     blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
     transparent: true, depthWrite: false, side: THREE.DoubleSide }), cards.length);
   cm.frustumCulled = false; cm.renderOrder = 2;
@@ -484,6 +488,7 @@ function palette(a) {
  * set (build()'s { update?, sets? }), update(t, focus) }.
  */
 export function buildDressing(root, def, { army, castle = null, sites = [] } = {}) {
+  WIND.copy(WIND0);
   const r = makeRng(44), A = army || DEFAULT_ARMY, PAL = { foe: palette(A.foe), ally: palette(A.ally) }, HW = WATER ? WATER.hw : 0;
   const poles = [], cloths = [], props = [], glowBoxes = [], fires = [], embers = [], farFires = [], troops = [], reeds = [], gates = {};
   // sunlight through the cloth: emissive = the banner's own texture, so the glyphs read even when backlit

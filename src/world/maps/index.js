@@ -101,7 +101,8 @@
 import dingjun from './dingjun.js';
 import hulao from './hulao.js';
 import changban from './changban.js';
+import chibi from './chibi.js';
 
-export const MAPS = { hulao, changban, dingjun };
+export const MAPS = { hulao, changban, chibi, dingjun };
 /** The map the menus stand on (title / select) and free mode's default. */
 export const HOME = 'dingjun';
