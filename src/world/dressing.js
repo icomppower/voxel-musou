@@ -639,6 +639,7 @@ export function buildDressing(root, def, { army, castle = null, sites = [] } = {
       const W = WATER, a0 = W.X ? TERRAIN.x0 : TERRAIN.z0, a1 = W.X ? TERRAIN.x1 : TERRAIN.z1;
       for (let x = a0 + 8; x < a1 - 8; x += 0.8) for (const side of [-1, 1]) {        // clumps of 4-8 stalks
         const inFord = W.fords.some(([a, b]) => x > a + 1 && x < b - 1);
+        if (W.fords.some(([a, b, d]) => d < 0 && x > a - 2.5 && x < b + 2.5)) continue;   // a bridge deck: none on it
         if (r.chance(inFord ? 0.85 : 0.2)) continue;
         const cx = x + r.range(-0.3, 0.3), cz = W.c(x) + side * r.range(HW + 0.1, HW + 3.9), lean = r.range(-0.2, 0.2);
         for (let n = 0, N = r.int(4, 8); n < N; n++) {
