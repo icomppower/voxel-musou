@@ -42,6 +42,8 @@ import { ZHAOYUN_KIT } from './zhaoyun/kit.js';
 import { HUANGZHONG_KIT } from './huangzhong/kit.js';
 import { ZHANGFEI_KIT } from './zhangfei/kit.js';
 import { FACE as ZF_FACE, PAL as ZF_PAL } from './zhangfei/model.js';
+import { LIUBEI_KIT } from './liubei/kit.js';
+import { FACE as LB_FACE, PAL as LB_PAL } from './liubei/model.js';
 
 const ZY_FACE = [
   '....................',
@@ -92,6 +94,25 @@ const PAL = { K: '#1d1514', k: '#4a3834', S: '#efc3a0', s: '#c38a6c', E: '#140c0
   W: '#efe8de', w: '#ffffff', G: '#dcd6cc', g: '#9a948a', R: '#b3261e', r: '#6e1712', Y: '#d9a53a', y: '#8a5a1a' };
 
 export const CHARS = {
+  liubei: {
+    id: 'liubei',
+    name: { zh: '劉備', en: 'Liu Bei' }, courtesy: { zh: '玄德', en: 'Xuande' }, seal: '皇叔',
+    title: { zh: '仁德之主', en: 'The Benevolent Lord' }, motto: '中山靖王之後 · 桃園結義 · 仁德昭烈',
+    weapon: { zh: '雙股劍', en: 'Twin Swords' },
+    bio: {
+      zh: ['涿郡人，中山靖王之後，雙耳垂肩，兩手過膝。', '桃園結義，與關張誓同生死；以仁德待人，百姓歸心。'],
+      en: ['A man of Zhuo descended from Prince Jing of Zhongshan, his earlobes reaching his shoulders, his hands his knees.',
+        'Sworn brother to Guan Yu and Zhang Fei in the peach garden, he won the people with benevolence.'],
+    },
+    stats: { atk: 3, def: 3, speed: 4, range: 3 }, musou: { zh: '昭烈・雙龍斬', en: 'Twin Dragon Slash' }, accent: '#6cb24e',
+    lines: {
+      intro: { zh: '吾乃中山靖王之後，劉玄德！', en: 'I am Liu Xuande, descendant of Prince Jing of Zhongshan!' },
+      musouEnd: { zh: '為天下蒼生，此戰必勝！', en: 'For the people of the realm — this battle is ours!' },
+      copy: ['仁德所至', '萬民歸心'],
+    },
+    portrait: { face: LB_FACE, pal: LB_PAL },
+    kit: LIUBEI_KIT,
+  },
   zhaoyun: {
     id: 'zhaoyun',
     name: { zh: '趙雲', en: 'Zhao Yun' }, courtesy: { zh: '子龍', en: 'Zilong' }, seal: '常山',
@@ -148,7 +169,7 @@ export const CHARS = {
     kit: ZHANGFEI_KIT,
   },
 };
-export const CHAR_ORDER = ['zhangfei', 'zhaoyun', 'huangzhong'];   // campaign order: liubei guanyu zhangfei zhaoyun zhugeliang huangzhong lubu
+export const CHAR_ORDER = ['liubei', 'guanyu', 'zhangfei', 'zhaoyun', 'zhugeliang', 'huangzhong', 'lubu'].filter((id) => CHARS[id]);   // campaign order
 
 /** Paint a char's 20×20 portrait into a canvas (width/height 20; scale it with CSS, image-rendering: pixelated). */
 export function paintPortrait(cv, char) {
