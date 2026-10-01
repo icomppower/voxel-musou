@@ -4,7 +4,7 @@
 // you keep.
 //
 // Catalogue (emitter → payload fields):
-//  scenario      main     {mode, char, ch, map}                         after a battle reset (ch: chapter id in story, undefined
+//  scenario      main     {mode, char, ch, map}                         after a battle reset (ch: chapter / trial id, undefined
 //                                                                       in free; map: the loaded maps/ id; game.army is set by
 //                                                                       then: vfx KO debris, HUD morale / banners / minimap)
 //  flow          main     {state, ctx}                                  flow state entered: title|select|prologue|battle|result
@@ -32,7 +32,7 @@
 //  footstep      loco     {x,y,z, foot, speed, kick?}                   a foot plants in the run (≥2.5 m/s) / out of a dodge roll
 //                                                                       / the dash lunge landing (kick: 1 = a hard plant: dust burst)
 //  hero:hurt     hero     {dmg, hp, x,y,z, armored}
-//  hero:down     hero     {x,z}                                         story mode: hp reached 0 (h.dead; free mode never)
+//  hero:down     hero     {x,z}                                         story / trial: hp reached 0 (h.dead; free mode never)
 //  musou:ready   musou    {}               a Musou became available: ≥ 1 of the 3 gauge segments full (edge; r3: one Musou spends one segment)
 //  musou:start   musou    {x,z, activation, burstAt, contact}           activation/burstAt/contact in musou frames
 //                                                                       (close-up cut, finisher, first mass hit)

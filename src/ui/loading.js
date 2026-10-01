@@ -6,17 +6,18 @@
 // with a slow push-in and rising embers, an ink band on the left with the chapter band, brush name + red seal, the intro
 // line; a tip (心得) and a gold brush-stroke progress bar with the current set-up stage along the bottom. No art (dev
 // entry): the plain background.
-// ctx in: { mode, ch, char, art? }. main.js drives progress(p, zh?, en?) and ready(); nothing here touches the sim.
+// ctx in: { mode ('story' | 'trial' | 'free'), ch, char, art? }. main.js drives progress(p, zh?, en?) and ready(); nothing here touches the sim.
 import { CHARS } from '../chars/index.js';
 import { replay } from './menu.js';
 import { difficulty } from '../core/difficulty.js';
 import { chapter } from '../story/chapters.js';
 
-/** [zh, en] band label for a flow ctx: the chapter (story) or the battlefield (free: the chapter ctx.ch's field). */
+/** [zh, en] band label for a flow ctx: the chapter (story), the trial, or the battlefield (free: the chapter ctx.ch's
+ *  field). */
 export function modeLabel(c) {
   const { CH } = chapter(c.ch);
-  return c.mode === 'story' ? [`${CH.num.zh}「${CH.title.zh}」`, `Story · ${CH.title.en}`]
-    : [`自由演武「${CH.title.zh}」`, `Free battle · ${CH.title.en}`];
+  return c.mode === 'free' ? [`自由演武「${CH.title.zh}」`, `Free battle · ${CH.title.en}`]
+    : [`${CH.num.zh}「${CH.title.zh}」`, `${c.mode === 'story' ? 'Story' : 'Trial'} · ${CH.title.en}`];
 }
 // [zh, en, char id | undefined = any officer] — keep in step with the controls table (title.js CONTROLS)
 const TIPS = [

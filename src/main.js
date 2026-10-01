@@ -1,12 +1,13 @@
 // Boot, flow and the fixed 60 Hz loop. Sim modules (hero, combat, crowd, actors, pickups, musou, story, camera control yaw) advance only
 // in step(); render-side modules read sim state in render() and never write it.
-// Flow: title → select → loading → (story: prologue →) battle → result → title. Each non-battle state is a DOM screen (index.html
+// Flow: title → select → loading → (story: prologue →) battle → (story / trial: result →) title. Each non-battle state is a DOM screen (index.html
 // #title #select #loading #prologue #result, modules below: createX(el, flow) → { enter(ctx), exit(), view? }; view(scene, camera,
 // focus, dt) = optional render-only camera/stage hook run after the gameplay rig while that screen is up); the sim only steps in
 // 'battle' and not paused (Esc: pause menu #menu). startBattle() resets the sim for a character / mode / chapter.
-// ctx through the flow: title → select { mode, ch, map } (story: ch = the chapter, story/chapters.js; free: ch = the
-// battlefield's chapter, map = its field) → loading / prologue / battle { mode, ch, map, char, art?, retry? } → result
-// (+ win, stats, reason?, diff, unlock?, first?) → title (+ ch after a win: the chapter panel opens on the next chapter).
+// ctx through the flow: title → select { mode, ch, map } (mode 'story': ch = the chapter, story/chapters.js; 'trial':
+// ch = the trial, story/trials.js; 'free': ch = the battlefield's chapter, map = its field) → loading / prologue / battle
+// { mode, ch, map, char, art?, retry? } → result (+ win, stats, reason?, diff, rec?) → title (+ mode, ch after a win:
+// the chapter / trial panel opens there). rec = core/progress.js record()'s result for the win.
 // flow.go() returns a promise that settles once the new state's materials are compiled and two frames have presented
 // (menu.js inkWipe holds the ink until then; the page boots under it, inkBoot). Every screen change but prologue →
 // battle (its own fade onto the live field) goes through the ink wipe; the HUD slides in on each battle entry (#hud.in).
@@ -17,8 +18,8 @@
 // Select → loading also snaps the select stage's key-art frame of the officer (snapArt) for the loading card and result.
 // Maps: startBattle loads the battle's map (world.load: in-page, under the loading card / ink); the title and select
 // always stand on HOME (flow.go('title') swaps back under the ink and clears the last battle's soldiers).
-// Dev shortcut: ?go=free|story[&char=id][&ch=chapter id][&map=map id] skips the screens straight into a battle (story
-// without &ch: the first chapter that lists the officer).
+// Dev shortcut: ?go=free|story|trial[&char=id][&ch=chapter / trial id][&map=map id] skips the screens straight into a
+// battle (story without &ch: the first chapter that lists the officer).
 import * as THREE from 'three';
 import { vrng, rng } from './core/rng.js';
 import { emit, on, collect } from './core/events.js';
@@ -48,7 +49,8 @@ import { createLoading } from './ui/loading.js';
 import { inkWipe, inkBoot, wiping, createNav, sfx, replay } from './ui/menu.js';
 import { createPrologue } from './story/prologue.js';
 import { createResult } from './story/result.js';
-import { difficulty, recordClear, cleared } from './core/difficulty.js';
+import { difficulty } from './core/difficulty.js';
+import { record } from './core/progress.js';
 
 const params = new URLSearchParams(location.search);
 const ENEMIES = Math.max(0, Math.min(2000, params.get('enemies') ? Number(params.get('enemies')) | 0 : 300));
@@ -61,7 +63,7 @@ const scene = new THREE.Scene();
 const world = createWorld(scene, post);          // loads HOME
 
 // ---- sim
-// mode: 'free' | 'story' (set by startBattle); the hero's character / kit: game.hero.char / game.hero.kit; army: the
+// mode: 'free' | 'story' | 'trial' (set by startBattle); the hero's character / kit: game.hero.char / game.hero.kit; army: the
 // battle's { foe, ally } (crowd/armies.js, set by startBattle before any view rebuild)
 const game = { frame: 0, hitstop: 0, freeze: 0, mode: 'free', diff: difficulty(), army: armyPair(FREE_ARMY) };   // diff: core/difficulty.js, fixed per battle
 game.cam = createCamSim();
@@ -124,18 +126,18 @@ function render(real) {
   hud.update();
 }
 
-/** New battle: { char: CHARS id, mode: 'story' | 'free', ch: chapter id (story), map: maps/index.js id (free; default
- *  HOME) }. Sets the armies, loads the map (no-op if it is up), resets every sim module (deterministic from here: both
+/** New battle: { char: CHARS id, mode: 'story' | 'trial' | 'free', ch: chapter / trial id, map: maps/index.js id (free;
+ *  default HOME) }. Sets the armies, loads the map (no-op if it is up), resets every sim module (deterministic from here: both
  *  RNGs reseeded, frame 0), rebuilds the kit views on a character change, lets the story spawn the field. */
 function startBattle({ char = 'zhaoyun', mode = 'free', ch, map } = {}) {
-  const C = mode === 'story' ? chapter(ch) : null;                                        // C2
+  const C = mode === 'free' ? null : chapter(ch);                                         // C2: the chapter / trial
   const who = CHARS[char] || CHARS.zhaoyun, newKit = who.kit !== game.hero.kit;
   char = who.id; ch = C?.CH.id; map = C ? C.CH.map : map || HOME;                          // C2: resolved ids
   const prev = game.army; game.army = armyPair(C ? C.CH.army : CHAPTERS.find((m) => m.CH.map === map)?.CH.army ?? FREE_ARMY);              // C3
   if (game.army.foe !== prev.foe || game.army.ally !== prev.ally) { crowdView.dispose(); crowdView = createCrowdView(scene, game); }
   world.load(map, { army: game.army });                                                    // C1
   map = MAP.id;
-  const p = C ? C.CH.start ?? spawnPoint('story') : spawnPoint('free');                   // C2
+  const p = { ...spawnPoint(mode), ...C?.CH.start };                                      // C2 (also opens every gate; a trial: the free arena)
   Object.assign(game, { mode, frame: 0, hitstop: 0, freeze: 0, diff: difficulty() });
   lastRenderFrame = 0;
   vrng.seed(7936); rng.seed(1);
@@ -206,16 +208,17 @@ const flow = {
     else { setPaused(false); hudEl.hidden = true; $(s).hidden = false; screens[s].enter(c); }
     emit('flow', { state: s, ctx: c });
     if (s === 'loading') { deploy(c); return nextFrame(); }
-    return warm();
+    // Results and the prologue only change DOM; a deployed battle is already compiled and presented.
+    return warm(s === 'title' || s === 'select' || (s === 'battle' && !set));
   },
 };
 const nextFrame = () => new Promise((r) => requestAnimationFrame(r));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** Compile every material in the scene (hidden pools included) for this camera, in parallel where the GPU has
  *  KHR_parallel_shader_compile, then let two frames present: the screen's first draws don't stall. */
-async function warm() {
+async function warm(compile = true) {
   screens[state]?.view?.(scene, camRig.camera, camRig.focus, 0);   // a screen's stage (select: the focused officer's model) exists now
-  await post.compile(scene, camRig.camera);
+  if (compile) await post.compile(scene, camRig.camera);
   await nextFrame(); await nextFrame();
 }
 /** Key-art still of the officer focused on the select stage, taken under full ink: one render in the select screen's
@@ -254,11 +257,11 @@ const screens = {
   title: createTitle($('title'), flow), select: createSelect($('select'), flow), loading: createLoading($('loading')),
   prologue: createPrologue($('prologue'), flow), result: createResult($('result'), flow),
 };
-// a win records the chapter's clear + best rank (first: a first clear, the next chapter opened; unlock: 上級 / 修羅
-// opened 修羅 — the result screen announces both); reason: a fail beat's defeat line
+// a win goes into the records (rec: what it beat and what it opened — the result screen shows both); reason: a fail
+// beat's defeat line
 on('story:end', (e) => {
-  const first = e.win && !cleared(ctx.ch), unlock = e.win && recordClear(game.diff, ctx.ch, e.stats.rank);
-  inkWipe(() => flow.go('result', { ...ctx, win: e.win, stats: e.stats, reason: e.reason, diff: game.diff, unlock, first }));
+  const rec = e.win ? record(ctx.ch, game.hero.char.id, game.diff.id, e.stats) : null;
+  inkWipe(() => flow.go('result', { ...ctx, char: game.hero.char.id, win: e.win, stats: e.stats, reason: e.reason, diff: game.diff, rec }));
 });
 addEventListener('keydown', (e) => {
   // opens; the menu's own nav (registered first) closes it and marks the key handled
@@ -285,5 +288,5 @@ const dev = params.get('go');
 // the page opens under full ink (index.html): the first screen is built and compiled under it, then the ink sweeps off
 const devChar = params.get('char') || 'zhaoyun';
 const devCh = chapter(params.get('ch') || CHAPTERS.find((m) => m.CH.heroes.includes(devChar))?.CH.id).CH.id;
-inkBoot(() => dev ? flow.go('battle', { mode: dev === 'story' ? 'story' : 'free', char: devChar, ch: devCh, map: params.get('map') || undefined }) : flow.go('title'));
+inkBoot(() => dev ? flow.go('battle', { mode: ['story', 'trial'].includes(dev) ? dev : 'free', char: devChar, ch: devCh, map: params.get('map') || undefined }) : flow.go('title'));
 requestAnimationFrame(frame);

@@ -1,8 +1,10 @@
 // Story chapters: the registry (campaign order) and THE chapter format. One module per chapter, src/story/<id>.js, named
 // by id (the campaign runs in historical order, so 定軍山 is chapter IV). Everything a chapter needs is data in its own
 // module: the director (index.js), prologue (prologue.js), result (result.js), title / select / loading screens read it.
-// Progress (core/difficulty.js clears(): { [chId]: best rank }): chapter i is open once chapter i-1 is cleared (the
-// first always is); a win records the best rank; 修羅 opens after any chapter cleared on 上級 / 修羅.
+// Progress (core/progress.js: records per stage × officer × difficulty): chapter i is open once chapter i-1 is cleared
+// (the first always is); what else the records open is that module's UNLOCKS.
+// Trials (./trials.js TRIALS) are battles in this same format without a prologue; chapter(id) finds either kind, and
+// the flow's ctx.mode ('story' | 'trial' | 'free') says which kind a battle is.
 //
 // ---- export const CH (metadata)
 //   id        'hulao'                              module / progress key; ctx.ch everywhere (flow, scenario event, ?ch=)
@@ -19,6 +21,7 @@
 //   hq        [x, z]                               minimap enemy 本陣 marker
 //   rank      { kos: [a, b, c], time: [a, b, c] }  rank points: kos ≥ a/b/c → 1/2/3, clear time (s) ≤ c/b/a → 1/2/3
 //                                                  (+ damage taken 0-3, + game.diff.rankBonus; S ≥ 8, A ≥ 6, B ≥ 4)
+//             s? { time?, kos?, dmg }              extra S gate: time ≤ seconds, kos ≥ count, dmg ≤ max HP × fraction
 //
 // ---- export const SPK = { key: { name: { zh, en }, seal: '劉', side: 'shu' | 'wei', char?: CHARS id } }
 //   non-player speakers: a seal portrait, or the pixel portrait when `char` (or the key itself) is a CHARS id. side
@@ -47,14 +50,17 @@
 //   actors { key: { kit, role, at: P, yaw?, hp?, name?, seal?, poise?, attacks?, scale?, retreatAt?, intro? } }
 //            hero-model NPCs (C5 game.actors.spawn; role 'boss' | 'ally' | 'npc'); ignored until that lane is in
 //   actor  { key, do: 'retreat' | 'join' | 'hold' | 'follow', at?: P } (or a list)   order an actor
+//   army   true: the free battle's army round the arena (crowd.spawnArmy: blocks, the foe army's officers, waves on);
+//            a trial's first beat fields it at reset under loading; firing the beat never fields it twice
 //   waves  true / false: foe reinforcement columns on / off
 //   limit  { z: P | null, back?: P, nag?: line }  stage bounds: the hero can't pass z(P) (null = open), nor fall back
 //            behind back(P) (out-and-back chapters); nag is said (≤ every 10 s) when he pushes the bound
 //   heal f fraction of max HP (× game.diff.heal)   morale ±d (1 = full)   gate: id  open a map gate (all shut at start)
 //   banner { html, en, dur?, big? }   system band (html may use <em>; big: the commander / chapter banners)
 //   hush   drop dialogue still queued (a stage just fell: its officer's taunts are stale)
-//   obj    { zh, en, go?: officer / actor key | P, timer?: s }   objective (HUD top left; go = the HUD arrow target;
-//            timer = a countdown on it, `timer: true` triggers when it runs out; a new obj replaces the timer)
+//   obj    { zh, en, go?: officer / actor key | P, timer?: s, keepTimer?: true } objective (HUD top left; go = the HUD arrow target;
+//            timer = a countdown on it, `timer: true` triggers when it runs out; a new obj replaces the timer unless
+//            keepTimer preserves the current countdown while a temporary objective is shown)
 //   fail   { when: trigger, zh, en } | null   arm a defeat condition (checked every step until replaced / null):
 //            its line is bannered, 2 s later the battle is lost with that reason (result screen)
 //   defend { key, at: P, r, hp, name: { zh, en } } | null   a point the foe drains while standing within r metres
@@ -63,8 +69,9 @@
 //   buff   { atk?, def?, dur?, zh?, en? }   hero multipliers: damage dealt × atk, damage taken ÷ def, for dur seconds
 //            (omitted = the rest of the battle); zh/en = its banner (e.g. 青釭劍)
 //   say    [line, ...]   dialogue, queued one at a time (~3-4.5 s each)
-// Position P = [zoneId, fx, fz] (fractions of the zone's half width / depth, or radius, from its centre) or
-// [anchorId, dx, dz] (metres from a map anchor, C1 map.anchors): the script follows the map's tables, no hard geometry.
+// Position P = [zoneId, fx, fz] (fractions of the zone's half width / depth, or radius, from its centre),
+// [anchorId, dx, dz] (metres from a map anchor, C1 map.anchors) or ['hero', dx, dz] (metres from where the hero stands
+// as it is read): the script follows the map's tables, no hard geometry.
 // Line = { who, zh?, en?, [heroId]: [zh, en] ... }: the hero's branch if any, else zh / en; a line with neither for the
 //   current hero is skipped (never an error). who: 'hero' | 'ally' (CH.ally[hero]) | an SPK key | a CHARS id (pixel
 //   portrait; the current hero's own id = 'hero'). A speaker that resolves to nothing is skipped too.
@@ -85,10 +92,11 @@ import * as hulao from './hulao.js';
 import * as changban from './changban.js';
 import * as chibi from './chibi.js';
 import * as dingjun from './dingjun.js';
-import { cleared } from '../core/difficulty.js';
+import { TRIALS } from './trials.js';
+import { cleared } from '../core/progress.js';
 
 export const CHAPTERS = [hulao, changban, chibi, dingjun];
-/** Chapter module by id (unknown / missing id = the first). */
-export const chapter = (id) => CHAPTERS.find((m) => m.CH.id === id) || CHAPTERS[0];
+/** Chapter or trial module by id (unknown / missing id = the first chapter). */
+export const chapter = (id) => CHAPTERS.find((m) => m.CH.id === id) || TRIALS.find((m) => m.CH.id === id) || CHAPTERS[0];
 /** Chapter i (index into CHAPTERS) is playable: the first always, the others once the one before is cleared. */
 export const chapterOpen = (i) => i === 0 || !!cleared(CHAPTERS[i - 1].CH.id);

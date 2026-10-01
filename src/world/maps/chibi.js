@@ -486,7 +486,7 @@ function buildSet(root, k) {
       T += dt; BURN_T.value = T;
       if (game.frame < lastFrame) reset();                                                             // a new battle
       lastFrame = game.frame;
-      if (game.mode === 'free' && fleetT < -1e8) { windT = T - 10; fleetT = 20; forestT = 20; }       // free: the burning night
+      if (game.mode !== 'story' && fleetT < -1e8) { windT = T - 10; fleetT = 20; forestT = 20; }       // free: the burning night
       if (fleetT > -1e8) fleetT += dt;
       if (forestT > -1e8) forestT += dt;
       // wind: the winter north-wester swings round to the south-easterly over 4 s; every flag turns with it

@@ -5,50 +5,57 @@
 //   story.reset({ mode, char, ch })        battle start (after hero / crowd / combat / musou resets); ch = chapter id
 //   story.step()                           once per sim step while the battle runs
 //   story.stats()                          → { kos, time (s), hpMax, maxChain, dmg, rank? } (story:end / result)
+//                                          frozen on the win / loss frame; the result animation adds no time or KOs
 //   story.morale                           ally share of the HUD morale bar 0-1 (undefined in free mode: HUD falls back)
 //   story.target                           {x, z} the HUD objective arrow points at, or null
 //   story.hq                               [x, z] of the foe's 本陣 on the minimap (CH.hq), or null (free: the HUD's default)
 //   story.timer                            seconds left on the objective countdown (obj.timer), or null (HUD)
 //   story.defend                           { name {zh, en}, f (HP fraction), x, z } of the point being defended, or null
-// Story mode plays one chapter (chapters.js: its BEATS, format in that header), run strictly in order — beat k fires
-// once its trigger holds and beat k-1 has fired; `limit` keeps the hero inside the stage he is on (DW8's barred gates),
+// Modes: 'story' plays one chapter, 'trial' one trial (trials.js: the same format, no prologue, gates left open, the
+// hero can fall), 'free' the endless field. A stage (chapter or trial) is its BEATS (chapters.js header), run strictly
+// in order — beat k fires once its trigger holds and beat k-1 has fired; `limit` keeps the hero inside the stage he is on (DW8's barred gates),
 // so the script can't be skipped or soft-locked by running ahead. The map's gates (world/map.js GATES) are sim state:
 // story mode shuts them all at reset, a beat's `gate: id` opens one (clampWalk lets everyone through, world.js swings /
 // burns it). A beat's `set` is a map set-piece change (story:set, world forwards it to the map's build().sets).
+// Trial first-beat `army` is fielded at reset under loading, then left in place when that beat's objective fires.
+// CH.rank.s adds strict S limits on clear time / KOs and cumulative damage; stages without it keep the point score.
 // Emits story:say / story:banner / story:objective / story:set / story:end (payloads: core/events.js). The flow (main.js)
 // leaves the battle for the result screen on story:end; the HUD shows the rest.
 // Also owns game.timeScale (wall-clock pace of the fixed-step loop, main.js): 1, except the victory slow-mo, and the
 // hero's buff multipliers h.atkK (damage dealt, combat.js applyHit) / h.defK (damage taken ÷, hero.hurt): 1 unless a
 // `buff` beat runs. Free mode = the endless field: the army, reinforcement waves, the hero's intro line, and no end.
-// Both modes field live allies (crowd.spawnAllies; columns via crowd.setAllies): story — the chapter's van (CH.van),
-// holding rank until the hero marches past; free — a block behind him. Morale also moves with the duels (foe grunts the
+// Allies (crowd.spawnAllies; columns via crowd.setAllies): a stage's CH.van holds rank until the hero marches past;
+// omitted (or free mode) = a block behind him, [] = alone. Morale also moves with the duels (foe grunts the
 // allies KO'd minus allies lost).
 import { emit, on } from '../core/events.js';
 import { zone, anchor, setGate, GATES } from '../world/map.js';
 import { ST } from '../crowd/crowd.js';
 import { CHARS } from '../chars/index.js';
+import { NPCS } from '../chars/npc/index.js';
 import { chapter } from './chapters.js';
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
-/** Script position P = [zone id, fx, fz] (fractions of the zone's half extents) or [anchor id, dx, dz] (metres from a
- *  map anchor: def.anchors). */
-function pos([id, a, b]) {
-  const p = anchor(id);
-  if (p) return [p[0] + a, p[1] + b];
-  const q = zone(id), hw = q.r ?? q.w / 2, hd = q.r ?? q.d / 2;
-  return [q.x + a * hw, q.z + b * hd];
-}
 const nearZ = (id) => { const q = zone(id); return q.z - (q.r ?? q.d / 2); };
-const xz = (P) => { const [x, z] = pos(P); return { x, z }; };
 
 export function createStory(game) {
+  /** Script position P = [zone id, fx, fz] (fractions of the zone's half extents), [anchor id, dx, dz] (metres from a
+   *  map anchor: def.anchors) or ['hero', dx, dz] (metres from the hero, now). */
+  function pos([id, a, b]) {
+    if (id === 'hero') return [game.hero.x + a, game.hero.z + b];
+    const p = anchor(id);
+    if (p) return [p[0] + a, p[1] + b];
+    const q = zone(id), hw = q.r ?? q.w / 2, hd = q.r ?? q.d / 2;
+    return [q.x + a * hw, q.z + b * hd];
+  }
+  const xz = (P) => { const [x, z] = pos(P); return { x, z }; };
   const S = { mode: 'free', char: 'zhaoyun', t: 0, done: false, maxChain: 0, downT: -1 };
   const st = { morale: undefined, target: null, timer: null, defend: null };
   const DLG_GAP = 12;                            // sim frames between two queued lines
   let C = null;                                  // the chapter module (story mode)
 
   st.stats = () => {
+    if (S.final) return S.final;
     const h = game.hero, time = Math.round(S.t / 60);
     const s = { kos: h.kos, time, hpMax: h.hpMax, maxChain: S.maxChain, dmg: S.dmg };
     if (S.won >= 0) s.rank = rank(s);
@@ -57,7 +64,7 @@ export function createStory(game) {
   S.end = (win) => { if (!S.done) { S.done = true; game.timeScale = 1; emit('story:end', { win, stats: st.stats(), reason: S.reason }); } };
 
   // sim-side listeners (these events fire inside step(), so the bookkeeping stays deterministic)
-  on('hero:down', () => { if (S.mode === 'story' && S.won < 0 && S.downT < 0) S.downT = S.t; });
+  on('hero:down', () => { if (S.mode !== 'free' && S.won < 0 && S.downT < 0) { S.downT = S.t; S.final = st.stats(); } });
   on('hero:hurt', (e) => { S.dmg += e.dmg; });
   on('ko', (e) => { if (e.officer && S.off) for (const k in S.off) if (S.off[k] === e.i) { S.dead[k] = true; S.off[k] = -1; } });
   const gone = (e) => { if (S.dead) S.dead[e.key] = true; };   // an actor KO'd or withdrawn: `down` for the script
@@ -71,7 +78,7 @@ export function createStory(game) {
     const who = line.who === 'ally' ? S.ally : line.who === S.char ? 'hero' : line.who;
     const e = { zh, en, dur: Math.max(160, Math.min(270, 100 + zh.length * 8)) };   // ≈ 2.7-4.5 s: DW8 pace
     if (who !== 'hero') {
-      const p = C.SPK[who], ch = CHARS[p?.char || who];
+      const p = C.SPK[who], ch = CHARS[p?.char || who] || NPCS[p?.char || who];
       if (!p && !ch) return;
       Object.assign(e, { speaker: p ? p.name : ch.name, portrait: ch ? ch.id : { seal: p.seal }, side: p ? p.side : 'shu' });
     }
@@ -105,7 +112,7 @@ export function createStory(game) {
 
   function fire(b) {
     const c = game.crowd, h = game.hero;
-    if (b.win) { S.won = S.t; S.q.length = 0; S.sayUntil = 0; }       // victory: drop pending chatter, its line goes out first
+    if (b.win) { S.won = S.t; S.final = st.stats(); S.q.length = 0; S.sayUntil = 0; } // victory: freeze stats and drop chatter
     if (b.retire) c.retire(h.z - 45);                                  // stage change: idle blocks far behind give their slots back
     for (const q of b.squads || []) { const [x, z] = pos(q.at); c.spawnSquad({ x, z, n: q.n, cols: q.cols, charge: !!q.charge }); }
     for (const k in b.officers || {}) {                                // spawned on the next steps (retried while slots are full)
@@ -116,6 +123,7 @@ export function createStory(game) {
     }
     for (const k in b.actors || {}) { S.dead[k] = false; game.actors?.spawn(k, { ...b.actors[k], at: xz(b.actors[k].at) }); }
     for (const a of [].concat(b.actor || [])) game.actors?.order(a.key, a.do, a.at && xz(a.at));
+    if (b.army && !c.armyOn) c.spawnArmy();
     if (b.waves != null) c.setWaves(b.waves);
     if (b.limit) {                                                     // crowd: waves spawn inside the forward bound
       S.limit = c.zMax = b.limit.z ? pos(b.limit.z)[1] : Infinity;
@@ -126,7 +134,10 @@ export function createStory(game) {
     if (b.gate) setGate(b.gate, true);
     if (b.banner) emit('story:banner', { dur: 150, ...b.banner });
     if (b.hush) S.q.length = 0;                                        // stage cleared: queued taunts are stale now
-    if (b.obj) { emit('story:objective', { zh: b.obj.zh, en: b.obj.en }); S.go = b.obj.go; S.timerEnd = b.obj.timer ? S.t + b.obj.timer * 60 : -1; }
+    if (b.obj) {
+      emit('story:objective', { zh: b.obj.zh, en: b.obj.en }); S.go = b.obj.go;
+      if (!b.obj.keepTimer) S.timerEnd = b.obj.timer ? S.t + b.obj.timer * 60 : -1;
+    }
     if ('fail' in b) S.fail = b.fail;
     if ('defend' in b) { const d = b.defend; S.def = d && { key: d.key, ...xz(d.at), r: d.r, hp: d.hp, hpMax: d.hp, name: d.name }; }
     if (b.set) emit('story:set', { id: b.set });
@@ -138,19 +149,21 @@ export function createStory(game) {
   }
 
   st.reset = ({ mode = 'free', char = 'zhaoyun', ch } = {}) => {
-    C = mode === 'story' ? chapter(ch) : null;
+    C = mode === 'free' ? null : chapter(ch);
     Object.assign(S, { mode, char, ally: C?.CH.ally?.[char], t: 0, done: false, maxChain: 0,
-      downT: -1, dmg: 0, beat: 0, beatT: 0, koBase: 0, off: {}, want: {}, dead: {}, q: [], sayUntil: 0, limit: Infinity, back: -Infinity,
+      downT: -1, final: null, dmg: 0, beat: 0, beatT: 0, koBase: 0, off: {}, want: {}, dead: {}, q: [], sayUntil: 0, limit: Infinity, back: -Infinity,
       nag: null, nagT: -999, mBase: 0.4, won: -1, go: null, timerEnd: -1, fail: null, reason: null, def: null, buffEnd: Infinity });
     const c = game.crowd, h = game.hero;
     game.timeScale = 1;
     h.atkK = h.defK = 1;
     Object.assign(st, { target: null, timer: null, defend: null, hq: C?.CH.hq || null });
-    if (C) for (const id in GATES) setGate(id, false);                 // spawnPoint() opened them all; the script opens each
+    if (mode === 'story') for (const id in GATES) setGate(id, false);  // spawnPoint() opened them all; the script opens each
     st.morale = C ? 0.4 : undefined;
-    if (!C) { c.spawnArmy(); c.spawnAllies({ x: h.x, z: h.z - 9, n: 24, cols: 6 }); }
-    else for (const v of C.CH.van || []) c.spawnAllies(v);
+    if (!C) c.spawnArmy();
+    // allies: the chapter's van; free and a trial without one, a block behind the hero
+    for (const v of C?.CH.van || [{ x: h.x, z: h.z - 9, n: 24, cols: 6 }]) c.spawnAllies(v);
     c.setAllies(true);
+    if (mode === 'trial' && C?.BEATS[0].army) c.spawnArmy();
     // story: the first beat spawns the field on step 1 — after main.js's 'scenario' reset of the HUD, so its objective sticks
   };
 
@@ -169,7 +182,7 @@ export function createStory(game) {
       if (k >= 300) S.end(true);
     } else if (S.downT >= 0) { if (S.t - S.downT >= 120) S.end(false); return; }     // 2 s down (or failed), then defeat
     else if (S.fail && holds(S.fail.when)) {                                          // an armed fail condition: lost
-      S.reason = { zh: S.fail.zh, en: S.fail.en }; S.downT = S.t; S.fail = null;
+      S.reason = { zh: S.fail.zh, en: S.fail.en }; S.downT = S.t; S.final = st.stats(); S.fail = null;
       emit('story:banner', { html: S.reason.zh, en: S.reason.en, dur: 150, big: true });
       return;
     }
@@ -223,13 +236,15 @@ export function createStory(game) {
   };
 
   /** DW-style rank from KOs, clear time and damage taken: 3 points each (+ game.diff.rankBonus; KO / time steps from
-   *  CH.rank), S ≥ 8, A ≥ 6, B ≥ 4, else C; never above game.diff.rankMax (初級 tops out at A). */
+   *  CH.rank), S ≥ 8, A ≥ 6, B ≥ 4, else C; never above game.diff.rankMax (初級 tops out at A).
+   *  CH.rank.s, when present, also requires time ≤ s.time, KOs ≥ s.kos and damage ≤ hpMax × s.dmg for S. */
   function rank({ kos, time, dmg, hpMax }) {
     const R = C.CH.rank;
     const p = R.kos.filter((v) => kos >= v).length + R.time.filter((v) => time <= v).length +
       (dmg <= hpMax * 0.35 ? 3 : dmg <= hpMax * 0.7 ? 2 : dmg <= hpMax * 1.1 ? 1 : 0);
     const d = game.diff, q = p + d.rankBonus, r = q >= 8 ? 'S' : q >= 6 ? 'A' : q >= 4 ? 'B' : 'C';
-    return r === 'S' && d.rankMax === 'A' ? 'A' : r;
+    const s = R.s;
+    return r === 'S' && (d.rankMax === 'A' || s && (time > (s.time ?? Infinity) || kos < (s.kos ?? 0) || dmg > hpMax * s.dmg)) ? 'A' : r;
   }
   return st;
 }

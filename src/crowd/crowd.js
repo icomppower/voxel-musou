@@ -20,7 +20,7 @@
 //  · Story API (src/story drives it): spawnSquad, spawnOfficer, setWaves, retire, spawnAllies, setAllies — see
 //    below. Officers carry a name (c.offName[i - grunts] = {zh, en}, shown by the HUD tags), a look (c.offLook[i - grunts]:
 //    null = the army's officer, else armies.js look — the view draws it) and a boss flag (c.boss[i]). Free mode fields
-//    the foe army's named officers (game.army.foe.officers, slot order).
+//    the foe army's named officers (game.army.foe.officers, slot order); so does a trial beat's `army`.
 //  · Allies (the ally army, e.g. 蜀): the same arrays past the foe army, indices N … T-1 (N = foe grunts + officer slots). Everything that
 //    loops i < N (hero hits, arrows, Musou, lock-on, HUD tags, the director, rings, tokens) never sees them; the AI loop,
 //    separate(), combat reactions() and the view run to T. An ally keeps pace with the hero in a slot 7.5-11.5 m off
@@ -85,7 +85,7 @@ export function createCrowd(game, grunts) {
     via: I(),                                                   // ally: sf left on the road (the straight line was blocked)
     boss: I(), offName: new Array(CROWD.officerSlots).fill(null),   // story: boss flag; officer display names {zh, en}
     offLook: new Array(CROWD.officerSlots).fill(null),              // officer looks (armies.js), null = the army's officer
-    waveT: 0, tokensUsed: 0, strikeF: 0, gap: 0, graceF: 0, heroHp: 0, wavesOn: false, engaged: 0, zMax: Infinity,   // zMax: story stage bound (waves)
+    waveT: 0, tokensUsed: 0, strikeF: 0, gap: 0, graceF: 0, heroHp: 0, wavesOn: false, armyOn: false, engaged: 0, zMax: Infinity,   // zMax: story stage bound (waves); armyOn: spawnArmy fielded the free army
     alliesOn: false, allyT: 0, front: 0, kosAgo: [0, 0], cheerF: 0, allyKos: 0, allyLost: 0,   // allyKos / allyLost: duel KOs
   };
   const head = new Int32Array(GRID * GRID), next = new Int32Array(T);
@@ -119,7 +119,7 @@ export function createCrowd(game, grunts) {
 
   c.reset = () => {
     c.offName.fill(null); c.offLook.fill(null);
-    c.st.fill(ST.OFF); c.token.fill(0); c.tokensUsed = 0; c.strikeF = 0; c.gap = 0; c.graceF = 0; c.heroHp = game.hero.hp; c.waveT = 0; c.sq.n = 0; c.wavesOn = false; c.zMax = Infinity;
+    c.st.fill(ST.OFF); c.token.fill(0); c.tokensUsed = 0; c.strikeF = 0; c.gap = 0; c.graceF = 0; c.heroHp = game.hero.hp; c.waveT = 0; c.sq.n = 0; c.wavesOn = c.armyOn = false; c.zMax = Infinity;
     c.foe.fill(-1); Object.assign(c, { alliesOn: false, allyT: 0, front: game.cam.yaw, kosAgo: [0, 0], cheerF: 0, allyKos: 0, allyLost: 0 });
   };
 
@@ -160,7 +160,7 @@ export function createCrowd(game, grunts) {
    *  One big block waits in front of the camera (the way forward), most other squads stand on that side too, a few
    *  flank and close the rear. */
   c.spawnArmy = () => {
-    c.wavesOn = true;
+    c.wavesOn = c.armyOn = true;
     const slots = freeSlots(false);
     const fwd = game.cam.yaw, { x: ox, z: oz } = MAP.spawn.free;
     let k = 0, n = 0;
@@ -726,9 +726,10 @@ export function createCrowd(game, grunts) {
     if (wz > c.zMax - 4) wz = Math.min(c.zMax - 4, 2 * h.z - wz);
     const [sx, sz] = clampWalk(h.x + Math.sin(a) * d, wz, 1);
     makeSquad(off.slice(0, n), sx, sz, Math.atan2(h.x - sx, h.z - sz), 3, SQ_CHARGE);   // a column that runs straight in
-    // free mode: KO'd officers come back with the waves (story officers are named and stay down)
+    // the free army (spawnArmy: free mode, a trial's `army`): its KO'd officers come back with the waves (scripted
+    // officers are named and stay down)
     for (const i of freeSlots(true)) {
-      if (game.mode === 'story' || i >= grunts + CROWD.officers) break;
+      if (!c.armyOn || i >= grunts + CROWD.officers) break;
       place(i, sx + rng.range(-2, 2), sz + rng.range(-2, 2), true); freeOfficer(i);
       break;
     }

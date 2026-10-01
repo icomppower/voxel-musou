@@ -36,12 +36,12 @@ export function createHero(game) {
   h.hurt = (dmg, fromX, fromZ, officer, iframes = 0) => {
     if (h.dead || h.iframes > 0 || h.state === 'musou' || h.state === 'dodge') return false;
     dmg = Math.round(dmg / h.defK);                           // defK: story buff (story/index.js reset / buff), 1 otherwise
-    h.hp = Math.max(game.mode === 'story' ? 0 : 1, h.hp - dmg);   // free mode: the hero cannot die (the demo keeps running)
+    h.hp = Math.max(game.mode === 'free' ? 1 : 0, h.hp - dmg);   // free mode: the hero cannot die (the demo keeps running)
     h.musou = Math.min(h.musouMax, h.musou + dmg * 0.15);
     const armored = !!h.move && h.move !== 'aim' && (!officer || h.kit.moves[h.move].armor);   // aim: a stance, not a swing
     emit('hero:hurt', { dmg, hp: h.hp, x: h.x, y: h.y + 1.2, z: h.z, armored });
     const dx = h.x - fromX, dz = h.z - fromZ, l = Math.hypot(dx, dz) || 1;   // knockback away from the striker
-    if (!h.hp) {                                 // story mode: down for good (flow shows the result on story:end)
+    if (!h.hp) {                                 // story / trial: down for good (flow shows the result on story:end)
       h.dead = true; h.move = null; h.musouBuf = 0; setState(h, 'hurt');
       h.vx = dx / l * 3.5; h.vz = dz / l * 3.5;
       emit('hero:down', { x: h.x, z: h.z });
