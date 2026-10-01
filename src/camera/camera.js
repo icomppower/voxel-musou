@@ -66,7 +66,8 @@ function spring(s, to, w, dt) {
   s.x = to + (d + t) * e; s.v = (s.v - w * t) * e;
 }
 
-/** Yaw that faces the nearest live officer within targetR of the hero, or his facing (recenter behind him). */
+/** Yaw that faces the nearest live officer (a crowd officer or a foe hero-model actor: the boss) within targetR of the
+ *  hero, or his facing (recenter behind him). */
 function targetYaw(game) {
   const c = game.crowd, h = game.hero;
   let best = CAM.targetR * CAM.targetR, yaw = h.yaw;
@@ -75,6 +76,10 @@ function targetYaw(game) {
     if (!c.type[i] || st === ST.OFF || st === ST.DEAD) continue;
     const dx = c.x[i] - h.x, dz = c.z[i] - h.z, d2 = dx * dx + dz * dz;
     if (d2 < best && d2 > 0.25) { best = d2; yaw = Math.atan2(dx, dz); }
+  }
+  for (const a of game.actors.list) {
+    const dx = a.x - h.x, dz = a.z - h.z, d2 = dx * dx + dz * dz;
+    if (game.actors.foe(a) && d2 < best && d2 > 0.25) { best = d2; yaw = Math.atan2(dx, dz); }
   }
   return yaw;
 }
@@ -138,7 +143,12 @@ export function createCameraRig(game, width, height) {
     kicks.push({ f: game.frame, px, dirX, dirY, len });
     if (kicks.length > 4) kicks.shift();
   };
-  on('hits', (e) => { if (e.heavy) kick(Math.min(4.5, 2.2 + e.count * 0.15), 0.25, 1, 7); else if (e.count >= 3 && e.move !== 'musou') kick(1, 0.4, 1, 4); });
+  // kit.weight (1 = Zhao Yun): heavier officers kick harder, and above 1.2 every normal contact kicks (a brawler's blows land)
+  on('hits', (e) => {
+    const w = game.hero.kit.weight || 1;
+    if (e.heavy) kick(Math.min(4.5 * w, (2.2 + e.count * 0.15) * w), 0.25, 1, 7);
+    else if (e.move !== 'musou' && (e.count >= 3 || w > 1.2)) kick(w * (e.count >= 3 ? 1 : 0.6), 0.4, 1, 4);
+  });
   on('hero:hurt', (e) => kick(e.armored ? 0.6 : 1.5, 1, 0.3, e.armored ? 4 : 6));
   on('land', (e) => e.hard && kick(2, 0, 1, 6));
   on('musou:burst', () => kick(6, 0.3, 1, 12));

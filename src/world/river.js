@@ -1,10 +1,12 @@
-// Han River (render-only): a flowing, bed-aware water strip, the stepping stones, and the water's answer to whoever
-// wades it. Reads sim state (hero / crowd positions), never writes it.
+// Water of the loaded map (render-only; map.js WATER: 定軍山's Han River, a river the lane crosses, or a long bank
+// beside the lane): a flowing, bed-aware water strip along the centre line (the whole grid along its axis, hw + 3.3 m
+// either side), the stepping stones, and the water's answer to whoever wades it. Reads sim state (hero / crowd
+// positions), never writes it.
 //  · flow: a baked current field in strip uv (tData.gb, m/s world xz) — faster over the shallow fords, slow and
 //    glassy in the pools, still at the banks, parted round every stone (potential flow round a cylinder) with a slack
 //    wake behind it; a tiling ripple tile (tWave) is advected along it with the two-phase flow-map blend (Valve's
-//    Portal 2 water flow / Catlike Coding "Texture Distortion"), so the pattern visibly streams downstream (+x),
-//    bunches against the stones and stretches past them without ever smearing out;
+//    Portal 2 water flow / Catlike Coding "Texture Distortion"), so the pattern visibly streams downstream (+ along
+//    the axis), bunches against the stones and stretches past them without ever smearing out;
 //  · depth: bed depth under the surface baked from ground() (tData.a): Beer-Lambert opacity along the view path, so
 //    the fords run clear over their gravel, the pools go dark teal, the edge thins to nothing; a slow swell (vertex)
 //    laps the waterline, where a foam lace breaks;
@@ -19,11 +21,13 @@ import * as THREE from 'three';
 import { makeRng, vrng } from '../core/rng.js';
 import { ST } from '../crowd/crowd.js';
 import { SUN_DIR, SKY_UP } from './sky.js';
-import { TERRAIN as G, ground, riverZ, FORDS, WATER_Y, smooth } from './map.js';
+import { TERRAIN as G, WATER as WT, ground, smooth, waterD } from './map.js';
 
-const X0 = G.x0, W = (G.nx - 1) * G.step, HW = 7.8;       // strip: the whole grid along x, 15.6 m across the centreline
+// the water being built (createRiver sets these): centre fn / slope in (along a, across p) coordinates, strip start /
+// length along the axis, strip half width, surface y
+let mid, dc, A0, W, HW, WATER_Y, X;
 const RIPS = 32;
-const riverDz = (x) => 5 * 0.055 * Math.cos(x * 0.055 + 0.6); // d riverZ / dx
+const world = (a, p) => (X ? [a, p] : [p, a]);           // (along, across) → [x, z]
 
 const WATER_VS = /* glsl */`
   uniform float uTime;
@@ -40,7 +44,7 @@ const WATER_VS = /* glsl */`
     #include <fog_vertex>
   }`;
 const WATER_FS = /* glsl */`
-  uniform float uTime; uniform sampler2D tData, tWave; uniform vec3 uSun, uSkyUp, uSunCol, uDeep, uShallow; uniform vec4 uRip[${RIPS}];
+  uniform float uTime; uniform sampler2D tData, tWave; uniform vec3 uSun, uSkyUp, uSunCol, uDeep, uShallow; uniform vec4 uRip[${RIPS}]; uniform vec2 uDrift;
   varying vec3 vWp; varying vec2 vUv; varying float vLap;
   #include <fog_pars_fragment>
   void main() {
@@ -64,7 +68,7 @@ const WATER_FS = /* glsl */`
       vec4 r = uRip[i];
       float age = uTime - r.z;
       if (age < 0.0 || age > 2.2) continue;
-      vec2 d = q - r.xy - vec2(0.5 * age, 0.0);
+      vec2 d = q - r.xy - uDrift * age;
       float L = length(d) + 1e-3, x = L - (0.2 + age * 1.35);
       float k = 1.0 - age / 2.2, env = r.w * exp(-x * x * 7.0) * k * k;
       rn += d / L * cos(x * 12.0) * env; rf += max(sin(x * 12.0), 0.0) * env;
@@ -147,18 +151,19 @@ function waveTile() {
   return t;
 }
 
-/** River data in strip uv (8 px/m): r = foam mask, gb = current (m/s, world xz), a = bed depth under WATER_Y. */
+/** Water data in strip uv (8 px/m along, ≤ 512 px across): r = foam mask, gb = current (m/s, world xz), a = bed depth
+ *  under WATER_Y. Stones: [a, p, w] in (along, across) coordinates. */
 function riverData(stones) {
-  const FW = 1792, FH = 128, pu = FW / W, pv = FH / (2 * HW);
-  // foam mask: a thin collar hugging every stone and its wake — two tapering threads trailing downstream (+x)
+  const FW = Math.min(4096, 8 * W), FH = Math.min(512, Math.ceil(HW) * 16), pu = FW / W, pv = FH / (2 * HW);
+  // foam mask: a thin collar hugging every stone and its wake — two tapering threads trailing downstream (+a)
   const fc = document.createElement('canvas'); fc.width = FW; fc.height = FH;
   const fg = fc.getContext('2d');
   fg.fillStyle = '#000'; fg.fillRect(0, 0, FW, FH);
   fg.filter = 'blur(1px)';
   for (const [x, z, w] of stones) {
-    if (Math.abs(z - riverZ(x)) > HW - 0.8) continue;
+    if (Math.abs(z - mid(x)) > HW - 0.8) continue;
     const rw = w * 0.5 + 0.12;
-    fg.save(); fg.translate((x - X0) * pu, (z - riverZ(x) + HW) * pv);
+    fg.save(); fg.translate((x - A0) * pu, (z - mid(x) + HW) * pv);
     const gr = fg.createRadialGradient(0, 0, 0, 0, 0, (rw + 0.18) * pu);
     gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.62, 'rgba(255,255,255,0)'); gr.addColorStop(0.8, 'rgba(255,255,255,0.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
     fg.fillStyle = gr; fg.scale(1, pv / pu); fg.beginPath(); fg.arc(0, 0, (rw + 0.18) * pu, 0, 6.2832); fg.fill();
@@ -169,22 +174,24 @@ function riverData(stones) {
     fg.restore();
   }
   const foam = fg.getImageData(0, 0, FW, FH).data;
-  // current: along the centreline, continuity-ish (shallow ford water runs fast, the pools slow), zero at the bank
+  // current: along the centreline, continuity-ish (shallow ford water runs fast, the pools slow), zero at the bank.
+  // (x, z) here are (along, across): fx / fz swap into world xz when packed
   const fx = new Float32Array(FW * FH), fz = new Float32Array(FW * FH), dep = new Float32Array(FW * FH);
   for (let j = 0; j < FH; j++) for (let i = 0; i < FW; i++) {
-    const x = X0 + (i + 0.5) / pu, z = riverZ(x) - HW + (j + 0.5) / pv, k = i + j * FW;
-    const d = WATER_Y - ground(x, z), tx = 1, tz = riverDz(x), tl = Math.hypot(tx, tz);
+    const x = A0 + (i + 0.5) / pu, z = mid(x) - HW + (j + 0.5) / pv, k = i + j * FW;
+    const [wx, wz] = world(x, z), h = ground(wx, wz);
+    const d = WATER_Y - (WT.bedHeight?.(wx, wz, h) ?? h), tx = 1, tz = dc(x), tl = Math.hypot(tx, tz);
     const sp = (1.6 - 0.9 * smooth(0.3, 0.95, d)) * smooth(0, 0.35, d);
     dep[k] = d; fx[k] = sp * tx / tl; fz[k] = sp * tz / tl;
   }
   // stones part the current (potential flow round a cylinder of radius R: v = U (1 − R²cos2θ/r², −R²sin2θ/r²)) and
   // leave a slack wake behind them
   for (const [sx, sz, w] of stones) {
-    const R = w * 0.55, ci = Math.round((sx - X0) * pu), cj = Math.round((sz - riverZ(sx) + HW) * pv), ri = Math.ceil(R * 7 * pu);
-    const tl = Math.hypot(1, riverDz(sx)), ux = 1 / tl, uz = riverDz(sx) / tl;
+    const R = w * 0.55, ci = Math.round((sx - A0) * pu), cj = Math.round((sz - mid(sx) + HW) * pv), ri = Math.ceil(R * 7 * pu);
+    const tl = Math.hypot(1, dc(sx)), ux = 1 / tl, uz = dc(sx) / tl;
     for (let j = Math.max(0, cj - Math.ceil(R * 3 * pv)); j < Math.min(FH, cj + Math.ceil(R * 3 * pv)); j++)
       for (let i = Math.max(0, ci - Math.ceil(R * 3 * pu)); i < Math.min(FW, ci + ri); i++) {
-        const k = i + j * FW, x = X0 + (i + 0.5) / pu, z = riverZ(x) - HW + (j + 0.5) / pv;
+        const k = i + j * FW, x = A0 + (i + 0.5) / pu, z = mid(x) - HW + (j + 0.5) / pv;
         const px = (x - sx) * ux + (z - sz) * uz, pz = -(x - sx) * uz + (z - sz) * ux, r2 = px * px + pz * pz;
         const U = Math.hypot(fx[k], fz[k]);
         let dx, dz;
@@ -200,7 +207,8 @@ function riverData(stones) {
   const data = new Uint8Array(FW * FH * 4), b = (v) => Math.max(0, Math.min(255, Math.round(v)));
   for (let k = 0; k < FW * FH; k++) {
     data[k * 4] = foam[k * 4];
-    data[k * 4 + 1] = b(128 + fx[k] * 64); data[k * 4 + 2] = b(128 + fz[k] * 64); data[k * 4 + 3] = b((dep[k] + 0.5) * 127.5);
+    const wx = X ? fx[k] : fz[k], wz = X ? fz[k] : fx[k];
+    data[k * 4 + 1] = b(128 + wx * 64); data[k * 4 + 2] = b(128 + wz * 64); data[k * 4 + 3] = b((dep[k] + 0.5) * 127.5);
   }
   const t = new THREE.DataTexture(data, FW, FH);
   t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
@@ -209,30 +217,36 @@ function riverData(stones) {
   return t;
 }
 
-export function createRiver(scene) {
+/** The loaded map's water (map.js WATER; null on a dry map) into `root`: { update(dt, game) }. */
+export function createRiver(root) {
+  if (!WT) return null;
+  ({ c: mid, dc, X, y: WATER_Y } = WT); HW = WT.hw + 3.3;
+  A0 = X ? G.x0 : G.z0; W = X ? G.x1 - G.x0 : G.z1 - G.z0;
   const grp = new THREE.Group();
-  // strip: 1 m along, 8 rows across (uv: along, across)
-  const n = 224, m = 8, pos = [], uv = [], idx = [];
+  // strip: 1 m along, 8 rows across (uv: along, across); along z the axes swap, so the winding flips to keep it facing up
+  const n = W, m = 8, pos = [], uv = [], idx = [];
   for (let s = 0; s <= n; s++) for (let a = 0; a <= m; a++) {
-    const x = X0 + (s / n) * W;
-    pos.push(x, WATER_Y, riverZ(x) - HW + (a / m) * 2 * HW); uv.push(s / n, a / m);
-    if (s < n && a < m) { const o = s * (m + 1) + a; idx.push(o, o + 1, o + m + 1, o + 1, o + m + 2, o + m + 1); }
+    const x = A0 + (s / n) * W, [wx, wz] = world(x, mid(x) - HW + (a / m) * 2 * HW);
+    pos.push(wx, WATER_Y, wz); uv.push(s / n, a / m);
+    if (s < n && a < m) { const o = s * (m + 1) + a; idx.push(...(X ? [o, o + 1, o + m + 1, o + 1, o + m + 2, o + m + 1] : [o, o + m + 1, o + 1, o + 1, o + m + 1, o + m + 2])); }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   geo.setIndex(idx);
-  // stepping stones marking each crossing + scattered boulders in the pools
-  const r = makeRng(33), stones = [];
-  for (const [a, b] of FORDS) for (let x = a + 1.5; x < b - 1; x += r.range(1.6, 2.6)) for (let o = -4; o <= 4; o += r.range(2.2, 3.2)) {
+  // stepping stones marking each crossing but a causeway / bridge deck (in (along, across) coordinates) + scattered
+  // boulders in the pools
+  const r = makeRng(33), stones = [], hw = WT.hw;
+  for (const [a, b, dep] of WT.fords) if (!(dep < 0)) for (let x = a + 1.5; x < b - 1; x += r.range(1.6, 2.6)) for (let o = -(hw - 0.5); o <= hw - 0.5; o += r.range(2.2, 3.2)) {
     if (r.chance(0.35)) continue;
-    stones.push([x + r.range(-0.4, 0.4), riverZ(x) + o, r.range(0.55, 0.9), r.range(0.3, 0.42)]);   // tops just clear of the water
+    stones.push([x + r.range(-0.4, 0.4), mid(x) + o, r.range(0.55, 0.9), r.range(0.3, 0.42)]);   // tops just clear of the water
   }
-  for (let i = 0; i < 40; i++) { const x = r.range(-100, 100); stones.push([x, riverZ(x) + r.range(-6, 6), r.range(0.8, 2.2), r.range(0.5, 1.4)]); }
-  const rip = Array.from({ length: RIPS }, () => new THREE.Vector4(0, 0, -99, 0));
+  for (let i = 0; i < WT.stones; i++) { const x = r.range(A0 + 12, A0 + W - 12); stones.push([x, mid(x) + r.range(-(hw + 1.5), hw + 1.5), r.range(0.8, 2.2), r.range(0.5, 1.4)]); }
+  const rip = Array.from({ length: RIPS }, () => new THREE.Vector4(0, 0, -99, 0)), tint = WT.tint;
   const uni = { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), uTime: { value: 0 }, tData: { value: riverData(stones) }, tWave: { value: waveTile() },
-    uSun: { value: SUN_DIR }, uSkyUp: { value: SKY_UP }, uSunCol: { value: new THREE.Color(1.0, 0.72, 0.4) },
-    uDeep: { value: new THREE.Color(0x0b2524) }, uShallow: { value: new THREE.Color(0x3a4a34) }, uRip: { value: rip } };
+    uSun: { value: SUN_DIR }, uSkyUp: { value: SKY_UP }, uSunCol: { value: new THREE.Color(...(tint.sun || [1.0, 0.72, 0.4])) },
+    uDeep: { value: new THREE.Color(tint.deep ?? 0x0b2524) }, uShallow: { value: new THREE.Color(tint.shallow ?? 0x3a4a34) }, uRip: { value: rip },
+    uDrift: { value: new THREE.Vector2(...world(0.5, 0)) } };
   const water = new THREE.Mesh(geo, new THREE.ShaderMaterial({
     vertexShader: WATER_VS, fragmentShader: WATER_FS, uniforms: uni, transparent: true, premultipliedAlpha: true, depthWrite: false, fog: true,
   }));
@@ -241,13 +255,14 @@ export function createRiver(scene) {
   water.name = 'river';
   grp.add(water);
   // stones: dry tops, a dark wet band down to the waterline (+ a wet sheen), sunk into the water
-  const smMat = new THREE.MeshStandardMaterial({ roughness: 0.75, flatShading: true });
+  const smMat = new THREE.MeshStandardMaterial({ roughness: 0.75, flatShading: true }), wy = WATER_Y;
+  smMat.customProgramCacheKey = () => 'river-stone|' + wy;           // the waterline is baked in: one program per surface height
   smMat.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vStoneY;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvStoneY = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).y;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vStoneY;')
       .replace('#include <color_fragment>', `#include <color_fragment>
-        float wet = 1.0 - smoothstep(${(WATER_Y + 0.06).toFixed(2)}, ${(WATER_Y + 0.15).toFixed(2)}, vStoneY);
+        float wet = 1.0 - smoothstep(${(wy + 0.06).toFixed(2)}, ${(wy + 0.15).toFixed(2)}, vStoneY);
         diffuseColor.rgb *= mix(1.0, 0.38, wet);`)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.3, wet);');
   };
@@ -255,8 +270,8 @@ export function createRiver(scene) {
   const sm = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(0.62, 0), smMat, stones.length);
   const mt = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), s = new THREE.Vector3(), c = new THREE.Color();
   const SCOL = [0x7c7466, 0x6c685e, 0x847868, 0x686452];                        // grey-brown river stone, a little moss
-  stones.forEach(([x, z, w, h], i) => {
-    const top = r.range(0.14, 0.3);
+  stones.forEach(([sa, sp, w, h], i) => {
+    const top = r.range(0.14, 0.3), [x, z] = world(sa, sp);
     sm.setMatrixAt(i, mt.compose(p.set(x, WATER_Y + top - h / 2, z), q.setFromEuler(e.set(r.range(-0.15, 0.15), r.range(0, 3), r.range(-0.15, 0.15))), s.set(w, h, w * r.range(0.7, 1.1))));
     sm.setColorAt(i, c.set(SCOL[r.int(0, 3)]).multiplyScalar(r.range(0.8, 1.1)));
   });
@@ -270,12 +285,12 @@ export function createRiver(scene) {
   const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
   for (let i = 0; i < DROPS; i++) drops.setMatrixAt(i, ZERO);
   grp.add(drops);
-  scene.add(grp);
+  root.add(grp);
 
   let ripN = 0, dropN = 0, t = 0, heroT = 0, heroY = 0;
   const hx = [0, 0];
   let soldierT, prevY, px, pz;                                                    // per soldier, sized to the crowd
-  const wet = (x, z) => Math.abs(z - riverZ(x)) < HW && ground(x, z) < WATER_Y - 0.04;
+  const wet = (x, z) => waterD(x, z) < HW && ground(x, z) < WATER_Y - 0.04;
   /** A ring at (x, z). weak (soldier wading) only takes a slot that has already mostly faded. */
   function ring(x, z, amp, weak) {
     let k = ripN, best = -1;
@@ -288,7 +303,7 @@ export function createRiver(scene) {
     for (let i = 0; i < n; i++) {
       const o = (dropN = (dropN + 1) % DROPS) * 7, a = vrng.next() * 6.283, sp = 0.6 + vrng.next() * 1.8;
       dp[o] = x + Math.cos(a) * 0.3; dp[o + 1] = WATER_Y + 0.05; dp[o + 2] = z + Math.sin(a) * 0.3;
-      dp[o + 3] = Math.cos(a) * sp + 0.4; dp[o + 4] = up * (0.6 + vrng.next() * 0.7); dp[o + 5] = Math.sin(a) * sp; dp[o + 6] = 0.035 + vrng.next() * 0.06;
+      dp[o + 3] = Math.cos(a) * sp + (X ? 0.4 : 0); dp[o + 4] = up * (0.6 + vrng.next() * 0.7); dp[o + 5] = Math.sin(a) * sp + (X ? 0 : 0.4); dp[o + 6] = 0.035 + vrng.next() * 0.06;   // drift downstream
     }
   }
 
@@ -307,7 +322,7 @@ export function createRiver(scene) {
         for (let i = 0; i < c.N; i++) {
           if (c.st[i] === ST.OFF) { prevY[i] = 0; continue; }
           const x = c.x[i], z = c.z[i];
-          if (Math.abs(z - riverZ(x)) < HW && Math.abs(x - h.x) < 40 && wet(x, z)) {
+          if (waterD(x, z) < HW && (X ? Math.abs(x - h.x) : Math.abs(z - h.z)) < 40 && wet(x, z)) {
             if (prevY[i] > 0.35 && c.y[i] < 0.08) splash(x, z, 12, 3.5);
             else if (c.st[i] !== ST.DEAD && c.y[i] < 0.3 && (soldierT[i] -= dt) <= 0) {   // the dead lie still
               const v = Math.hypot(x - px[i], z - pz[i]) / dt;

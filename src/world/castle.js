@@ -1,13 +1,14 @@
-// Voxel castle = the 魏軍營寨's front: stone curtain wall with bastions (its west end runs into the pass cliffs), a
-// gate passage through the wall into the camp courtyard with two studded door leaves that swing open (gate
-// 'weiCamp', world.js), two-tier gatehouse, tall corner tower and the flank wall that closes the courtyard's east side,
-// and a garrison of archers on the wall walk. Built in the camp plateau's frame (world.js lifts it to CAMP_H).
-// Static merged geometry except the door leaves and the garrison (instanced, idle sway).
+// Voxel castle (def.castle; 定軍山: the 魏軍營寨's front): stone curtain wall facing -Z with two bastions (its west end
+// runs into the cliffs), a gate passage through the wall with two studded door leaves that swing open (the def's
+// `gate`, a map gate of kind 'doors': world.js), two-tier gatehouse, tall corner tower and the flank wall that closes
+// the courtyard's east side, and a garrison of archers on the wall walk. Params { gate, wallZ, gateX, x0, y }: the wall
+// runs x0 … gateX + 18 (corner tower beyond), bastions at x0 + 10 / x0 + 30 (keep x0 ≤ gateX − 45), face at z = wallZ.
+// Built in its plateau's frame (world.js lifts it to y). Static merged geometry except the door leaves and the
+// garrison (instanced, idle sway).
 import * as THREE from 'three';
 import { boxesGeometry, shade } from '../core/voxel.js';
 import { makeRng } from '../core/rng.js';
 import { voxelGrain } from './terrain.js';
-import { WALL_Z, GATE_X } from './map.js';
 
 export const lit = () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, flatShading: true });
 const STONE = 0x9c7c72, MORTAR = 0x2e2220,   // warm brown stone: the backlit face lands on the concept's wall (#5a423c–#654c4a) once shaded
@@ -127,12 +128,12 @@ export function paperLantern(b, x, y, z, s = 1) {
     { s: [0.44 * s, 0.1 * s, 0.44 * s], p: [x, y - 0.45 * s, z], c: 0x2a1a0e }, { s: [0.08, 0.35 * s, 0.08], p: [x, y - 0.65 * s, z], c: 0x7c2b1d });
 }
 
-export function buildCastle(scene) {
+export function buildCastle(scene, { wallZ, gateX: GATE_X, x0: X0 }) {
   const r = makeRng(21);
   const b = [];
   // the curtain wall ends at a corner tower 18 m left of the gate (+X is screen-left in the wall-facing view): beyond
   // it the flank is open, so the gameplay camera (frame top ≈ 5° above level) sees the low sun and the watchtowers on the camp shelf
-  const H = 10, T = 9, X0 = -64, X1 = GATE_X + 18, z0 = WALL_Z;
+  const H = 10, T = 9, X1 = GATE_X + 18, z0 = wallZ, BA = [X0 + 10, X0 + 30];   // bastions
   const gw = 8, gh = 7.6, gl = GATE_X - gw / 2, gr = GATE_X + gw / 2;
   const inGate = (x, y) => Math.abs(x - GATE_X) < gw / 2 + 0.2 && y < gh + (Math.abs(x - GATE_X) < gw / 2 - 1.4 ? 0.9 : 0);
   // core (split round the gate passage) + lintel over it + wall walk + plinth
@@ -150,7 +151,7 @@ export function buildCastle(scene) {
   // courtyard side of the wall: plain coursing so the view back from the camp is not a black slab
   stoneFaceBack(b, r, X0 + 20, X1, 0, H, z0 + T, (x, y) => Math.abs(x - GATE_X) < gw / 2 + 0.2 && y < gh + 0.9);
   // bastions
-  for (const bx of [-54, -34]) {
+  for (const bx of BA) {
     const w = 7, dz = 3.2;
     b.push({ s: [w, H + 1, dz + 0.5], p: [bx, (H + 1) / 2, z0 - dz / 2 + 0.25], c: MORTAR });
     stoneFace(b, r, bx - w / 2, bx + w / 2, 0, H + 1, z0 - dz);
@@ -180,9 +181,9 @@ export function buildCastle(scene) {
   b.push({ s: [22, 0.6, 8.4], p: [GATE_X, H + 0.3, z0 + 4.4], c: 0x5a4a44 });
   pagoda(b, GATE_X, H + 0.6, z0 + 4.6, 19, 8, 2, 1.05);
   // pagoda pavilion on a bastion
-  pagoda(b, -54, H + 1, z0 + 1.2, 6.5, 5, 1, 0.75);
+  pagoda(b, BA[0], H + 1, z0 + 1.2, 6.5, 5, 1, 0.75);
   // siege works at the wall foot: scaling ladders (the ram is gone: the gate is broken from the plaza now)
-  for (const lx of [-44, -24, 4]) {
+  for (const lx of [X0 + 20, X0 + 40, X1 - 4]) {
     const lean = 0.3, len = H / Math.cos(lean) + 0.6, zc = z0 - 0.3 - Math.sin(lean) * len / 2, yc = Math.cos(lean) * len / 2;
     for (const sx of [-0.45, 0.45]) b.push({ s: [0.14, len, 0.14], p: [lx + sx, yc, zc], r: [-lean, 0, 0], c: 0x4a3222 });
     for (let k = 0.6; k < len - 0.3; k += 0.55) b.push({ s: [0.9, 0.08, 0.08], p: [lx, Math.cos(lean) * k, z0 - 0.3 - Math.sin(lean) * k], c: 0x3a2618 });
@@ -197,7 +198,7 @@ export function buildCastle(scene) {
   for (const dx of [-8, -3.2, 3.2, 8]) paperLantern(lb, GATE_X + dx, H + 3.1, z0 - 0.1, 1.1);
   for (const dx of [-3.4, 3.4]) paperLantern(lb, GATE_X + dx, gh + 0.6, z0 - 0.6, 0.9);            // either side of the gate arch
   for (const dx of [-3, 3]) paperLantern(lb, cx + dx, TH + 2.3, z0 - 1, 0.9);
-  for (const dx of [-2, 2]) paperLantern(lb, -54 + dx, H + 3.1, z0 - 1.6, 0.8);
+  for (const dx of [-2, 2]) paperLantern(lb, BA[0] + dx, H + 3.1, z0 - 1.6, 0.8);
   const lanterns = new THREE.Mesh(boxesGeometry(lb), new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(4, 4, 4) }));
   lanterns.name = 'lanterns';
   scene.add(lanterns);
@@ -220,7 +221,7 @@ export function buildCastle(scene) {
   const fig = figureGeometry();
   const spots = [];
   for (let x = X0 + 6; x < X1 - 1; x += r.range(1.6, 4.2)) if (Math.abs(x - GATE_X) > 11.5 || r.chance(0.3)) spots.push([x, H, z0 + r.range(0.9, 1.6)]);
-  for (const bx of [-54, -34]) for (let k = 0; k < 3; k++) spots.push([bx + r.range(-2.8, 2.8), H + 1, z0 - 2.4 + r.range(0, 1)]);
+  for (const bx of BA) for (let k = 0; k < 3; k++) spots.push([bx + r.range(-2.8, 2.8), H + 1, z0 - 2.4 + r.range(0, 1)]);
   for (let k = 0; k < 5; k++) spots.push([cx + r.range(-4.5, 4.5), TH, z0 - 0.8 + r.range(0, 1)]);
   const garrison = new THREE.InstancedMesh(fig, lit(), spots.length);
   garrison.userData.spots = spots.map(([x, y, z]) => ({ x, y, z, ph: r.range(0, 6.28), yaw: Math.PI + r.range(-0.4, 0.4) }));   // face the arena (-Z)
@@ -239,8 +240,8 @@ export function buildCastle(scene) {
   return {
     H, cornerX: cx, towerH: TH, x0: X0, x1: X1,
     // fire/brazier spots (castle frame): [x, y, z, scale]
-    fires: [[GATE_X - 6.5, 0, z0 - 2.2, 1.5], [GATE_X + 7, 0, z0 - 1.8, 1.3], [-30, H + 0.2, z0 + 1.8, 1.7], [-52, H + 0.2, z0 + 2, 1.5], [cx - 2, TH + 0.2, z0 + 1, 1.2],
-      [-22, 0, z0 - 3.2, 1.3], [1, 0, z0 - 7, 1.1], [-17, 0, z0 - 11, 1.2]],   // burning siege debris on the plaza
+    fires: [[GATE_X - 6.5, 0, z0 - 2.2, 1.5], [GATE_X + 7, 0, z0 - 1.8, 1.3], [X0 + 34, H + 0.2, z0 + 1.8, 1.7], [X0 + 12, H + 0.2, z0 + 2, 1.5], [cx - 2, TH + 0.2, z0 + 1, 1.2],
+      [GATE_X - 12, 0, z0 - 3.2, 1.3], [GATE_X + 11, 0, z0 - 7, 1.1], [GATE_X - 7, 0, z0 - 11, 1.2]],   // burning siege debris before the wall
     /** Door swing: 0 shut … 1 open (render-side eased by world.js). */
     setDoors(k) { doors[0].rotation.y = -k * Math.PI / 2; doors[1].rotation.y = k * Math.PI / 2; },
     update: pose,

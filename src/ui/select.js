@@ -1,21 +1,31 @@
 // Character select (#select, ui lane). DW8 officer select over the live battlefield: the focused officer's actual voxel
 // model (kit.model on its own rig, idle clip, cloth/hair chains) stands at the foot of the pass on the right third of the frame,
 // backlit by the low sun, a warm firelight key on his front (world.js stage-key), the field behind in deep bokeh (post.js DoF focused on him), slow turntable, a spin-in on
-// every focus change and warm dust motes drifting through the light. Left: 蜀 banner + officer cards (pixel portraits),
-// the info panel (brush name, courtesy name, epithet, weapon, bio, 攻/防/速/射程 bars, Musou name) and the intro line as
-// vertical calligraphy beside the model. All data comes from CHARS / CHAR_ORDER (src/chars/index.js), nothing per-hero.
+// every focus change and warm dust motes drifting through the light. Left: the focused officer's faction banner
+// (CHARS[id].side {zh, en}, default 蜀 Shu Han) over a compact roster (a row per officer: pixel portrait, brush name,
+// romanisation, seal; up to 7 fit), the info panel (brush name, courtesy name, epithet, weapon, bio, 攻/防/速/射程 bars,
+// Musou name) and the intro line as vertical calligraphy beside the model. All data comes from CHARS / CHAR_ORDER
+// (src/chars/index.js), nothing per-hero. Roster: the chapter's CH.heroes (story), else CHAR_ORDER (trial / free; ids
+// not in CHARS are left out). Records (core/progress.js): each card carries the officer's best rank on this chapter /
+// trial at the picked difficulty, and the line between the header and info his record there (rank, fastest clear, most
+// KOs), leaving the officer's body clear. The info column scrolls below that line (a new focus returns to its top);
+// at ≤ 4:3 it and the roster tighten to keep the model visible. An officer the records have not opened yet (UNLOCKS)
+// can be looked at but not deployed: 鎖 on his card, his rule on that line.
 // Input: hover only highlights a card; a click (tap) on a card focuses that officer (spin-in, info panel swaps), ↑/↓ /
 // d-pad too. Deploy = 出陣 button, Enter / A, or a double-click on the card that was already focused.
-// ctx in: { mode }. Deploy → ink wipe → flow.go('loading', { mode, char }) (loading.js); back → title.
-// 3D is render-only: view(scene, camera, focus, dt) runs after the gameplay camera rig while this screen is up.
+// ctx in: { mode, ch, map? }. Deploy → ink wipe → flow.go('loading', { ...ctx, char }) (loading.js); back → title.
+// 3D is render-only: view(scene, camera, focus, dt) runs after the gameplay camera rig while this screen is up; an
+// officer's model is built the first time he is focused (kept for the session).
 import * as THREE from 'three';
 import { CHARS, CHAR_ORDER, paintPortrait } from '../chars/index.js';
 import { sampleClip, POSE_SIZE } from '../hero/rig.js';
 import { createNav, sfx, inkWipe, wiping, afterWipe, stamp, clearStamp, replay } from './menu.js';
 import { SWASH, STAGE as TITLE } from './title.js';
-import { MODE } from './loading.js';
+import { modeLabel } from './loading.js';
 import { difficulty } from '../core/difficulty.js';
-import { dotTex, scatter, passPoint, standOfficer, poseOfficer } from './stage.js';
+import { best, locked } from '../core/progress.js';
+import { chapter } from '../story/chapters.js';
+import { dotTex, scatter, stagePoint, standOfficer, poseOfficer } from './stage.js';
 
 const STATS = [['atk', '攻', 'Attack'], ['def', '防', 'Defence'], ['speed', '速', 'Speed'], ['range', '射程', 'Reach']];
 // stage framing: officer ≈ 6.3 m from the lens, 30° vFOV (full body + headroom), aim shifted so he stands at x ≈ 75 %
@@ -23,14 +33,16 @@ const STATS = [['atk', '攻', 'Attack'], ['def', '防', 'Defence'], ['speed', '�
 const STAGE = { dist: 6.3, eye: 1.2, aim: 1.05, fov: 30, screenX: 0.5, face: Math.PI - 0.38, sway: 0.28, spin: 1.35, motes: 110 };
 // key-art frame (snapshot for the loading card / result, main.js snapArt): closer, knees up, the title's held pose
 const KEYART = { dist: 4.3, eye: 1.35, aim: 1.3, screenX: 0.42 };
+const ALL = CHAR_ORDER.filter((id) => CHARS[id]), SHU = { zh: '蜀', en: 'Shu Han' };
+const mmss = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
 export function createSelect(el, flow) {
   el.innerHTML = `
     <div class="s-veil"></div>
     <header class="s-head"><h2>選擇武將</h2><small>Choose your officer</small><span class="s-mode"><b></b><small></small></span></header>
-    <aside class="s-roster"><div class="s-fac"><i>蜀</i><small>Shu Han</small></div>
-      ${CHAR_ORDER.map((id, i) => { const c = CHARS[id]; return `<button class="s-card" data-i="${i}" style="--acc:${c.accent}" title="${c.name.en} — double-click to deploy">
-        <canvas width="20" height="20"></canvas><b>${c.name.zh}</b><small>${c.name.en}</small><i>${c.seal}</i></button>`; }).join('')}
+    <aside class="s-roster"><div class="s-fac"><i></i><small></small></div>
+      ${ALL.map((id) => { const c = CHARS[id]; return `<button class="s-card" data-id="${id}" style="--acc:${c.accent}" title="${c.name.en} — double-click to deploy">
+        <canvas width="20" height="20"></canvas><b>${c.name.zh}</b><small>${c.name.en}</small><i>${c.seal}</i><em class="t-rk"></em></button>`; }).join('')}
     </aside>
     <article class="s-info">
       <div class="s-name"><h1></h1><div><i class="s-seal"></i><p class="s-court"></p></div></div>
@@ -42,24 +54,26 @@ export function createSelect(el, flow) {
       <div class="s-musou"><span>無雙亂舞</span><b></b><small></small>${SWASH}</div>
     </article>
     <div class="s-line"><p></p><small></small></div>
+    <p class="s-rec"><span>戰績</span><b></b><small></small></p>
     <div class="s-act"><button class="s-back"><b>返回</b><small>Back</small></button><button class="s-go"><b>出陣</b><small>To battle</small></button></div>
     <footer class="ui-foot"><span><kbd>↑</kbd><kbd>↓</kbd>切換武將<small>Officer</small></span><span><kbd>Click</kbd>選擇<small>Select</small></span>
       <span><kbd>Enter</kbd><kbd class="pad">A</kbd>出陣<small>Deploy</small></span><span><kbd>Esc</kbd><kbd class="pad">B</kbd>返回<small>Back</small></span>
       <span><kbd>Drag</kbd>旋轉<small>Turn</small></span></footer>`;
-  const $ = (s) => el.querySelector(s), cards = [...el.querySelectorAll('.s-card')];
-  cards.forEach((b, i) => paintPortrait(b.querySelector('canvas'), CHARS[CHAR_ORDER[i]]));
-  let ctx = {}, cur = 0, busy = false, spinT = 0;
+  const $ = (s) => el.querySelector(s), cards = {};
+  for (const b of el.querySelectorAll('.s-card')) { cards[b.dataset.id] = b; paintPortrait(b.querySelector('canvas'), CHARS[b.dataset.id]); }
+  let ctx = {}, ids = ALL, cur = ALL[0], busy = false, spinT = 0;   // ids: this visit's roster; cur: the focused id
 
   // ---- 2D: info panel
   function show(i, quiet) {
-    i = (i + cards.length) % cards.length;
-    if (i === cur && !quiet) return;
-    cards[cur].classList.remove('on'); cur = i; cards[cur].classList.add('on');
+    const id = ids[(i + ids.length) % ids.length];
+    if (id === cur && !quiet) return;
+    cards[cur].classList.remove('on'); cur = id; cards[cur].classList.add('on');
     // DOM focus follows the selection (a clicked card kept focus and its ring after ↑/↓: two cards looked lit)
     if (document.activeElement?.classList.contains('s-card')) cards[cur].focus({ preventScroll: true });
     replay(cards[cur], 'pick');                           // the chosen card flashes in
-    const c = CHARS[CHAR_ORDER[i]];
+    const c = CHARS[id], side = c.side || SHU;
     el.style.setProperty('--acc', c.accent);
+    $('.s-fac i').textContent = side.zh; $('.s-fac small').textContent = side.en;
     $('.s-name h1').textContent = c.name.zh;
     $('.s-seal').textContent = c.seal;
     $('.s-court').textContent = `字${c.courtesy.zh}`;
@@ -73,6 +87,13 @@ export function createSelect(el, flow) {
     }
     $('.s-musou b').textContent = c.musou.zh; $('.s-musou small').textContent = c.musou.en;
     $('.s-line p').textContent = c.lines.intro.zh; $('.s-line small').textContent = c.lines.intro.en;
+    // the line above the info: his unlock rule while locked, else his record here at this difficulty
+    const lk = locked(id), d = difficulty(), r = ctx.mode !== 'free' && best(ctx.ch, id, d.id);
+    const [zh, en] = lk ? lk.rule : r ? [`評價 ${r.rank}・${mmss(r.time)}・${r.kos} 擊破`, `Best on ${d.en}`] : ['尚無戰績', `No record on ${d.en} yet`];
+    $('.s-rec').hidden = !lk && ctx.mode === 'free';
+    $('.s-rec').classList.toggle('lock', !!lk); $('.s-go').classList.toggle('lock', !!lk);
+    $('.s-rec span').textContent = lk ? '未解鎖' : '戰績'; $('.s-rec b').textContent = zh; $('.s-rec small').textContent = en;
+    $('.s-info').scrollTop = 0;
     replay(el, 'swap');                                    // name ink-in, stat bars refill, voice line brush reveal
     spinT = 0;
     if (!quiet) sfx('move');
@@ -81,10 +102,11 @@ export function createSelect(el, flow) {
   const go = () => {
     if (busy) return;
     if (wiping()) return afterWipe(go);             // pressed while this screen is still being uncovered: queued
+    if (locked(cur)) return sfx('back');
     busy = true;
     stamp($('.s-act'), '出陣');
-    const id = CHAR_ORDER[cur];
-    setTimeout(() => inkWipe(() => flow.go('loading', { mode: ctx.mode, char: id })), 520);
+    const id = cur;
+    setTimeout(() => inkWipe(() => flow.go('loading', { mode: ctx.mode, ch: ctx.ch, map: ctx.map, char: id })), 520);
   };
   const back = () => {
     if (busy) return;
@@ -92,7 +114,7 @@ export function createSelect(el, flow) {
     busy = true; sfx('back');
     inkWipe(() => flow.go('title'));
   };
-  const nav = createNav({ move: (d) => { if (!busy) show(cur + d); }, ok: go, back });
+  const nav = createNav({ move: (d) => { if (!busy) show(ids.indexOf(cur) + d); }, ok: go, back });
 
   // click a card = focus it; a double-click deploys only if the first click landed on the already-focused card
   let armed = false;
@@ -100,8 +122,8 @@ export function createSelect(el, flow) {
     const card = e.target.closest('.s-card');
     if (card) {
       if (busy) return;
-      const i = +card.dataset.i;
-      if (i !== cur) { show(i); armed = false; }
+      const i = ids.indexOf(card.dataset.id);
+      if (card.dataset.id !== cur) { show(i); armed = false; }
       else if (e.detail >= 2 && armed) go();
       else armed = true;
     } else if (e.target.closest('.s-go')) go();
@@ -109,11 +131,11 @@ export function createSelect(el, flow) {
   });
   // drag anywhere off the panels turns the officer (eased back to the pose when let go)
   let drag = null, userYaw = 0;
-  el.addEventListener('pointerdown', (e) => { if (!e.target.closest('button')) drag = e.clientX; });
+  el.addEventListener('pointerdown', (e) => { if (!e.target.closest('button, .s-info, .s-roster, .s-head')) drag = e.clientX; });
   addEventListener('pointermove', (e) => { if (drag !== null) { userYaw += (e.clientX - drag) * 0.012; drag = e.clientX; } });
   addEventListener('pointerup', () => { drag = null; });
 
-  // ---- 3D: officer stage (render-only; every officer meshed on the first view, kept for the session)
+  // ---- 3D: officer stage (render-only; an officer is meshed when first focused, kept for the session)
   let group = null, motes = null, t = 0, keyart = false, key = null, keyHome = null;
   const models = {}, pose = new Float32Array(POSE_SIZE), P = new THREE.Vector3(), tmp = new THREE.Vector3();
   const model = (id) => models[id] || (models[id] = standOfficer(id, group));
@@ -126,7 +148,6 @@ export function createSelect(el, flow) {
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
     motes.userData.seed = seed; motes.frustumCulled = false;
     group.add(motes);
-    for (const id of CHAR_ORDER) model(id).root.visible = false;   // mesh every officer now, under the ink wipe (no hitch on focus)
     // warm key: one of the world's firelights (world.js 'stage-key') moved to his front-left while this screen is up, so
     // his face and the ground round his feet catch fire-glow against the backlit field (same light count: no recompile)
     key = scene.getObjectByName('stage-key');
@@ -137,7 +158,7 @@ export function createSelect(el, flow) {
     if (!group) build(scene);
     group.visible = true;
     dt = Math.min(dt || 1 / 60, 0.1); t += dt; spinT += dt;
-    const S = STAGE, p = passPoint(P, 0, 10), id = CHAR_ORDER[cur];   // the foot of the mountain road (山道), looking up it
+    const S = STAGE, p = stagePoint(P, 'select'), id = cur;   // def.stage.select (定軍山: the foot of the pass road, looking up it)
     for (const k in models) models[k].root.visible = k === id;
     const M = model(id);
     if (key) key.position.set(p.x + 1.6, p.y + 2.3, p.z - 2.4);
@@ -173,10 +194,20 @@ export function createSelect(el, flow) {
     keyart(v) { keyart = v; },
     enter(c) {
       ctx = c; busy = false; armed = false; clearStamp($('.s-act'));
-      const [zh, en] = MODE[c.mode] || MODE.free;
+      const [zh, en] = modeLabel(c);
       const d = difficulty();
       $('.s-mode b').textContent = `${zh}・${d.zh}`; $('.s-mode small').textContent = `${en} · ${d.en}`;
-      show(cur, true); replay(el, 'in');                   // header, roster and actions slide in as the ink uncovers
+      // this visit's roster: the chapter's heroes (story) or everyone (trial / free); the focus stays if he is in it
+      const want = (c.mode !== 'free' && chapter(c.ch).CH.heroes) || ALL;
+      ids = ALL.filter((id) => want.includes(id));
+      if (!ids.length) ids = ALL;                           // a chapter none of whose heroes exist yet (phase A): anyone
+      for (const id in cards) {                             // 鎖 on a locked officer, else his best rank here on this tier
+        const lk = !!locked(id), r = (!lk && c.mode !== 'free' && best(c.ch, id, d.id)?.rank) || '', chip = cards[id].querySelector('.t-rk');
+        cards[id].hidden = !ids.includes(id); cards[id].classList.toggle('lock', lk);
+        chip.textContent = lk ? '鎖' : r; chip.className = `t-rk r${r}`;
+      }
+      if (!ids.includes(cur)) { cards[cur].classList.remove('on'); cur = ids[0]; }
+      show(ids.indexOf(cur), true); replay(el, 'in');       // header, roster and actions slide in as the ink uncovers
       nav.start();
     },
     exit() { nav.stop(); drag = null; if (group) group.visible = false; if (key) key.position.copy(keyHome); },

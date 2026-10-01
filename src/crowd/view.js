@@ -1,14 +1,19 @@
-// Crowd renderer (render-only). Voxel Wei soldiers built from shared instanced parts — hips, torso, head, arms,
-// thighs, shins — plus per-kind weapons (spear, dao + round shield, captain glaive, 魏 standard) and a separate
-// officer set. Per soldier the parts form a small hierarchy (pelvis → torso → head/arms → weapon; pelvis → thigh →
-// shin) so knees bend, the torso twists and the weapon follows the hand. Poses come from sim state (walk / march /
-// run / guard / wind-up / strike / hurt / knock / air / down / get-up / dead) and are blended per soldier, so nothing
-// pops. Instances are packed each frame (count = visible soldiers of that kind). Committed attackers coil into a big
-// overhead wind-up (0.67 s) with a pixel-star glint on the weapon tip; a blow that will really come flares a big red
-// pixel star for its last 14 sf (a feint keeps the white star). Guards next to a striker
-// (crowd.raiseF) brandish their weapons and shout with him. Officers carry a spinning ▼ marker. Shu allies (crowd
-// indices N … T-1) are the same rig in Shu green (their own part meshes at all three LODs, a 蜀 standard); duels show no
-// wind-up glint / flare (those telegraph blows on the hero). Struck soldiers flash (aHit, below). Never writes sim state.
+// Crowd renderer (render-only). Voxel soldiers of the battle's two armies (game.army = { foe, ally }, crowd/armies.js)
+// built from shared instanced parts — hips, torso, head, arms, thighs, shins — plus per-kind weapons (spear, dao + round
+// shield, captain glaive, the army's standard) and a separate officer set. Per soldier the parts form a small hierarchy
+// (pelvis → torso → head/arms → weapon; pelvis → thigh → shin) so knees bend, the torso twists and the weapon follows
+// the hand. Poses come from sim state (walk / march / run / guard / wind-up / strike / hurt / knock / air / down / get-up
+// / dead) and are blended per soldier, so nothing pops. Instances are packed each frame (count = visible soldiers of that
+// kind). Committed attackers coil into a big overhead wind-up (0.67 s) with a pixel-star glint on the weapon tip; a blow
+// that will really come flares a big red pixel star for its last 14 sf (a feint keeps the white star). Guards next to a
+// striker (crowd.raiseF) brandish their weapons and shout with him. Officers carry a spinning ▼ marker. Allies (crowd
+// indices N … T-1) are the same rig in the ally army's palette (their own part and weapon meshes at all three LODs, their
+// own standard); duels show no wind-up glint / flare (those telegraph blows on the hero). Struck soldiers flash (aHit,
+// below). Never writes sim state.
+// Armies: palettes, weapon accents, standards and the emissive accent gains come from game.army when the view is
+// created; main.js disposes and recreates the view when the pair changes (dispose()). A named officer with a look
+// (crowd.offLook[slot], armies.js) is drawn with his own officer part set (palette + helmet variant), sculpted the first
+// time he is drawn and kept until the view is dropped.
 import * as THREE from 'three';
 import { sculpt, shade, boxesGeometry } from '../core/voxel.js';
 import { ST, KIND, CROWD } from './crowd.js';
@@ -16,34 +21,30 @@ import { COMBAT } from '../combat/combat.js';
 import { hash01 } from '../core/rng.js';
 import { HUD_TAG_R } from '../ui/hud.js';
 import { ground } from '../world/map.js';
+import { palette } from './armies.js';
 
 const V = 0.042;
 const b = (a, bb, c, paint) => ({ a, b: bb, c, paint });
 // lamellar: 3-voxel rows — dark lacing line, plate body, lit top edge; columns offset per row
 const lamel = (base, hi, line) => (x, y, z, i, j) => (j % 3 === 0 ? line : j % 3 === 2 ? hi : ((i + ((j / 3) | 0)) % 2 ? shade(base, 0.86) : base));
 
-const GRUNT = {
-  armor: 0x3e3430, hi: 0x6a5a50, lace: 0x1d1513, plate: 0x564842, rivet: 0xa07e4c,
-  cloth: 0x5e3026, pants: 0x3a302b, wrap: 0x9a8566, wrapD: 0x5c4c3c, boot: 0x2a1d16,
-  skin: 0xd6a07a, skinD: 0xb07e5e, eye: 0x1a1210, brow: 0x2b1b14,
-  helm: 0x4a4341, helmHi: 0x8a7d74, band: 0xd0321f, belt: 0x4d3322, buckle: 0xb89040, bracer: 0x3b2a20,
-};
-// Shu allies: green-lacquered lamellar, green coat and headband, a gold tassel
-const SHU = {
-  ...GRUNT, armor: 0x2e3a30, hi: 0x5c7a58, lace: 0x121a14, plate: 0x3e5242, rivet: 0xc0a050, cloth: 0x2a6a30,
-  pants: 0x2e3a2c, helm: 0x3a463c, helmHi: 0x8a9a80, band: 0x2b7a36, tassel: 0xd8b040, bracer: 0x2c3a28,
-};
-const OFFICER = {
-  ...GRUNT, armor: 0x2b3350, hi: 0x6a7aa0, lace: 0x141a2c, plate: 0x3e4a70, rivet: 0xe0b450, cloth: 0x4a1a2a,
-  pants: 0x23263a, wrap: 0x3a3f5a, wrapD: 0x23263a, helm: 0x2a3150, helmHi: 0xe0b450, belt: 0x6a4a20, buckle: 0xf0c860,
-};
-const WOOD = 0x5e3d24, STEEL = 0x98968f, RED = 0xc02a1c, BRONZE = 0x9a7838;
+const WOOD = 0x5e3d24, STEEL = 0x98968f, BRONZE = 0x9a7838, CAP = 0x16120f, BEARD = 0x1e1612;
+/** An officer palette with a named officer's look (armies.js): armor → lacquer, plates, lit rows, lacing, helmet; trim →
+ *  rivets, helmet trim, buckle; cape → cape (fold shade derived); plume; helm → helmet variant. */
+const withLook = (P, L) => ({ ...P,
+  ...(L.armor != null && { armor: L.armor, plate: shade(L.armor, 1.4), hi: shade(L.armor, 2.3), lace: shade(L.armor, 0.5), helm: L.armor }),
+  ...(L.trim != null && { rivet: L.trim, helmHi: L.trim, buckle: shade(L.trim, 1.1) }),
+  ...(L.cape != null && { cape: [shade(L.cape, 0.72), L.cape] }),
+  ...(L.plume != null && { plume: L.plume }),
+  ...(L.helm && { helmet: L.helm }) });
 
 // skeleton (soldier space, feet at 0, facing +Z): pelvis 0.86 · waist +0.04 · neck +0.5 · shoulders ±0.235 @ +0.43
 // · hips ±0.095 @ -0.02 · knee -0.42 · hand -0.5 from the shoulder
 const J = { waist: 0.04, neck: 0.5, shX: 0.235, shY: 0.43, hipX: 0.095, hipY: -0.02, knee: 0.42, hand: 0.5 };
 
+/** Body part box lists for palette C (armies.js GRUNT / OFFICER keys); officer: cape, beard and helmet variant C.helmet. */
 function bodyParts(C, officer) {
+  const helm = officer && C.helmet;
   const L = lamel(C.armor, C.hi, C.lace);
   const plate = (x, y, z, i, j) => ((i + j) % 4 === 0 ? C.rivet : j % 4 === 3 ? C.hi : C.plate);
   const pauld = (x, y, z, i, j) => (j === 0 ? C.hi : j % 2 ? C.armor : shade(C.armor, 0.8));
@@ -67,33 +68,54 @@ function bodyParts(C, officer) {
     b([-0.125, 0.44, -0.115], [0.125, 0.5, 0.115], C.cloth),
     b([-0.05, 0.46, -0.05], [0.05, 0.53, 0.05], C.skin),
   ];
-  if (officer) p.torso.push(b([-0.21, -0.36, -0.2], [0.21, 0.46, -0.145], (x, y, z, i, j) => (j % 5 === 0 ? 0x7a1e14 : 0xa82c1e)));   // cape
+  if (officer) p.torso.push(b([-0.21, -0.36, -0.2], [0.21, 0.46, -0.145], (x, y, z, i, j) => (j % 5 === 0 ? C.cape[0] : C.cape[1])));   // cape
   p.head = [
     b([-0.1, 0.02, -0.09], [0.1, 0.25, 0.11], C.skin),
     b([-0.1, 0.02, 0.06], [0.1, 0.07, 0.11], C.skinD, true),                           // jaw shadow
     b([-0.07, 0.12, 0.1], [-0.03, 0.155, 0.12], C.eye, true), b([0.03, 0.12, 0.1], [0.07, 0.155, 0.12], C.eye, true),
     b([-0.08, 0.16, 0.1], [-0.02, 0.18, 0.12], C.brow, true), b([0.02, 0.16, 0.1], [0.08, 0.18, 0.12], C.brow, true),
     b([-0.015, 0.08, 0.11], [0.02, 0.13, 0.135], C.skinD),                             // nose
-    b([-0.125, 0.18, -0.125], [0.125, 0.32, 0.125], C.helm),
-    b([-0.08, 0.32, -0.08], [0.08, 0.35, 0.08], C.helmHi),
-    b([-0.12, 0.03, -0.13], [0.12, 0.19, -0.08], lamel(C.helm, C.helmHi, shade(C.helm, 0.6))),   // neck guard
-    b([-0.13, 0.06, -0.08], [-0.1, 0.19, 0.05], C.helm), b([0.1, 0.06, -0.08], [0.13, 0.19, 0.05], C.helm),
-    b([-0.14, 0.18, -0.14], [0.14, 0.23, 0.14], C.band),                               // red headband
-    b([-0.05, 0.05, -0.165], [-0.01, 0.2, -0.13], C.band), b([0.01, 0.09, -0.165], [0.05, 0.2, -0.13], C.band),   // knot tails
+    ...(helm === 'cap' ? [                                                             // officer's cap: no helmet
+      b([-0.105, 0.2, -0.115], [0.105, 0.27, 0.1], C.brow),                            // hair
+      b([-0.095, 0.25, -0.1], [0.095, 0.38, 0.07], CAP), b([-0.08, 0.34, -0.13], [0.08, 0.44, -0.02], CAP),   // crown, raised back
+      b([-0.32, 0.36, -0.12], [0.32, 0.4, -0.08], CAP),                                // the long side flaps
+    ] : [
+      b([-0.125, 0.18, -0.125], [0.125, 0.32, 0.125], C.helm),
+      b([-0.08, 0.32, -0.08], [0.08, 0.35, 0.08], C.helmHi),
+      b([-0.12, 0.03, -0.13], [0.12, 0.19, -0.08], lamel(C.helm, C.helmHi, shade(C.helm, 0.6))),   // neck guard
+      b([-0.13, 0.06, -0.08], [-0.1, 0.19, 0.05], C.helm), b([0.1, 0.06, -0.08], [0.13, 0.19, 0.05], C.helm),
+      b([-0.14, 0.18, -0.14], [0.14, 0.23, 0.14], C.band),                             // headband
+      b([-0.05, 0.05, -0.165], [-0.01, 0.2, -0.13], C.band), b([0.01, 0.09, -0.165], [0.05, 0.2, -0.13], C.band),   // knot tails
+    ]),
   ];
-  if (officer) {
+  if (!officer) p.head.push(b([-0.035, 0.34, -0.035], [0.035, 0.42, 0.035], C.tassel));   // top tassel (reads from above)
+  else if (helm === 'horn') {
     p.head.push(
-      b([-0.1, 0.0, 0.06], [0.1, 0.08, 0.13], 0x1e1612),                               // beard
-      b([-0.25, 0.24, -0.02], [-0.13, 0.4, 0.03], C.helmHi), b([0.13, 0.24, -0.02], [0.25, 0.4, 0.03], C.helmHi),   // wings
-      b([-0.035, 0.34, -0.035], [0.035, 0.62, 0.035], RED), b([-0.035, 0.52, -0.2], [0.035, 0.62, -0.03], RED));      // plume
+      b([-0.11, -0.04, 0.05], [0.11, 0.08, 0.135], BEARD),                             // full beard
+      b([-0.05, 0.22, 0.12], [0.05, 0.3, 0.155], C.helmHi),                            // brow plate
+      b([-0.12, 0.26, 0.11], [-0.04, 0.32, 0.15], C.helmHi), b([0.04, 0.26, 0.11], [0.12, 0.32, 0.15], C.helmHi),   // crescent horns
+      b([-0.17, 0.3, 0.1], [-0.11, 0.46, 0.14], C.helmHi), b([0.11, 0.3, 0.1], [0.17, 0.46, 0.14], C.helmHi),
+      b([-0.21, 0.44, 0.08], [-0.15, 0.56, 0.12], C.helmHi), b([0.15, 0.44, 0.08], [0.21, 0.56, 0.12], C.helmHi),
+      b([-0.035, 0.32, -0.12], [0.035, 0.45, -0.04], C.plume));                        // short plume at the back
+  } else if (helm === 'crest') {
+    p.head.push(
+      b([-0.06, -0.02, 0.07], [0.06, 0.07, 0.13], BEARD),                              // chin beard
+      b([-0.04, 0.31, -0.15], [0.04, 0.35, 0.13], C.helmHi),                           // gilt comb
+      b([-0.03, 0.35, -0.2], [0.03, 0.5, 0.11], C.plume), b([-0.03, 0.5, -0.15], [0.03, 0.58, 0.05], C.plume),   // plume ridge
+      b([-0.145, 0.03, 0.0], [-0.115, 0.19, 0.1], C.helmHi), b([0.115, 0.03, 0.0], [0.145, 0.19, 0.1], C.helmHi));   // cheek guards
+  } else if (helm === 'cap') {
+    p.head.push(b([-0.06, -0.12, 0.07], [0.06, 0.06, 0.13], BEARD), b([-0.09, 0.06, 0.11], [0.09, 0.085, 0.135], BEARD));   // long beard, moustache
   } else {
-    p.head.push(b([-0.035, 0.34, -0.035], [0.035, 0.42, 0.035], C.tassel ?? RED));     // red top tassel (reads from above)
+    p.head.push(
+      b([-0.1, 0.0, 0.06], [0.1, 0.08, 0.13], BEARD),                                  // beard
+      b([-0.25, 0.24, -0.02], [-0.13, 0.4, 0.03], C.helmHi), b([0.13, 0.24, -0.02], [0.25, 0.4, 0.03], C.helmHi),   // wings
+      b([-0.035, 0.34, -0.035], [0.035, 0.62, 0.035], C.plume), b([-0.035, 0.52, -0.2], [0.035, 0.62, -0.03], C.plume));   // plume
   }
   // captain: gilded helmet band + tall horsehair crest (its own small mesh on the head; the body gets a bronze tint)
   p.crest = [
     b([-0.15, 0.175, -0.15], [0.15, 0.235, 0.15], 0xc8a050),
-    b([-0.04, 0.34, -0.04], [0.04, 0.66, 0.04], RED), b([-0.04, 0.56, -0.26], [0.04, 0.66, -0.04], RED),
-    b([-0.04, 0.4, -0.3], [0.04, 0.56, -0.22], RED)];
+    b([-0.04, 0.34, -0.04], [0.04, 0.66, 0.04], C.crest), b([-0.04, 0.56, -0.26], [0.04, 0.66, -0.04], C.crest),
+    b([-0.04, 0.4, -0.3], [0.04, 0.56, -0.22], C.crest)];
   p.arm = [
     b([-0.055, -0.24, -0.06], [0.055, 0.03, 0.06], C.cloth),
     b([-0.06, -0.46, -0.063], [0.06, -0.22, 0.063], (x, y, z, i, j) => (j % 2 ? C.bracer : shade(C.bracer, 1.35))),
@@ -109,10 +131,11 @@ function bodyParts(C, officer) {
 
 // weapons in weapon space: grip at the origin, +Z along the weapon
 const box = (s, p, c) => ({ s, p, c });
-function weaponGeos() {
+/** Weapons in palette C's accents (tassels: C.weapon, shield face: C.shield). */
+function weaponGeos(C) {
   const spear = boxesGeometry([
     box([0.042, 0.042, 2.0], [0, 0, 0.38], WOOD), box([0.065, 0.065, 0.06], [0, 0, -0.62], 0x2a1d16),
-    box([0.07, 0.07, 0.05], [0, 0, 1.4], BRONZE), box([0.1, 0.1, 0.08], [0, -0.02, 1.35], RED), box([0.05, 0.08, 0.08], [0, -0.08, 1.31], RED),
+    box([0.07, 0.07, 0.05], [0, 0, 1.4], BRONZE), box([0.1, 0.1, 0.08], [0, -0.02, 1.35], C.weapon), box([0.05, 0.08, 0.08], [0, -0.08, 1.31], C.weapon),
     box([0.085, 0.028, 0.16], [0, 0, 1.5], STEEL), box([0.05, 0.028, 0.12], [0, 0, 1.63], STEEL), box([0.025, 0.028, 0.06], [0, 0, 1.71], STEEL),
   ]);
   const sword = boxesGeometry([
@@ -122,12 +145,12 @@ function weaponGeos() {
   ]);
   const glaive = boxesGeometry([
     box([0.05, 0.05, 2.3], [0, 0, 0.45], 0x3a2418), box([0.08, 0.08, 0.06], [0, 0, 1.6], BRONZE),
-    box([0.14, 0.14, 0.12], [0, 0, 1.52], RED),
+    box([0.14, 0.14, 0.12], [0, 0, 1.52], C.weapon),
     box([0.028, 0.16, 0.5], [0, 0.05, 1.9], STEEL), box([0.028, 0.1, 0.14], [0, 0.11, 2.2], STEEL), box([0.03, 0.06, 0.06], [0, -0.05, 1.7], BRONZE),
   ]);
   const pole = boxesGeometry([
     box([0.055, 0.055, 3.5], [0, 0, 0.9], WOOD), box([1.0, 0.045, 0.045], [0.45, 0, 2.55], WOOD),
-    box([0.09, 0.09, 0.14], [0, 0, 2.72], BRONZE), box([0.14, 0.14, 0.12], [0, 0, 2.6], RED),
+    box([0.09, 0.09, 0.14], [0, 0, 2.72], BRONZE), box([0.14, 0.14, 0.12], [0, 0, 2.6], C.weapon),
   ]);
   // round shield strapped to the forearm: centred in front of it, facing +Z of the hand frame
   const R = 0.29;
@@ -138,25 +161,32 @@ function weaponGeos() {
     if (r > R - 0.05) return BRONZE;
     if (r < 0.06) return z > 0.1 ? 0xe0b860 : BRONZE;
     if (Math.abs(r - 0.16) < 0.025) return 0xc8a050;
-    return (Math.floor(Math.atan2(x, y - 0.12) / (Math.PI / 4)) & 1) ? 0x7a2418 : 0x5e1a12;
+    return (Math.floor(Math.atan2(x, y - 0.12) / (Math.PI / 4)) & 1) ? C.shield[0] : C.shield[1];
   }), b([-0.07, 0.1, 0.13], [0.07, 0.15, 0.17], 0xe0b860)];
   const shield = sculpt(shieldBoxes, V, 0.1), mid_shield = sculpt(shieldBoxes, V * 2, 0.1);
-  // far LOD shield (≈ 36 tris vs ≈ 736): a stepped cross of solid boxes, the painted face's red + the bronze boss
-  const far_shield = boxesGeometry([box([0.58, 0.34, 0.06], [0, 0.12, 0.1], 0x6a1f15), box([0.34, 0.58, 0.06], [0, 0.12, 0.1], 0x6a1f15),
+  // far LOD shield (≈ 36 tris vs ≈ 736): a stepped cross of solid boxes, the painted face's colour + the bronze boss
+  const far_shield = boxesGeometry([box([0.58, 0.34, 0.06], [0, 0.12, 0.1], C.shield[2]), box([0.34, 0.58, 0.06], [0, 0.12, 0.1], C.shield[2]),
     box([0.12, 0.12, 0.05], [0, 0.12, 0.14], 0xc8a050)]);
   return { spear, sword, glaive, pole, shield, mid_shield, far_shield };
 }
 
-/** All crowd geometries. */
-function buildCrowdGeometries() {
+/** An officer part set (full voxels, no LOD) for officer palette P, keyed pre + part. */
+function officerGeos(P, pre) {
+  const off = bodyParts(P, true), g = {};
+  for (const k of ['hips', 'torso', 'head', 'arm', 'thigh', 'shin']) g[pre + k] = sculpt(off[k], V, 0.1);
+  return g;
+}
+
+/** All crowd geometries: foe grunt palette gp, foe officer palette op, ally grunt palette ap (armies.js palette()). */
+function buildCrowdGeometries(gp, op, ap) {
   const g = {};
-  const grunt = bodyParts(GRUNT, false), off = bodyParts(OFFICER, true);
+  const grunt = bodyParts(gp, false);
   for (const k of ['hips', 'torso', 'head', 'crest', 'arm', 'thigh', 'shin']) g[k] = sculpt(grunt[k], V, 0.12);
-  for (const k of ['hips', 'torso', 'head', 'arm', 'thigh', 'shin']) g['o_' + k] = sculpt(off[k], V, 0.1);
+  Object.assign(g, officerGeos(op, 'o_'));
   // mid LOD (8-28 m from the lens): the same parts re-voxelised at twice the voxel size — ≈ a quarter of the faces, same silhouette,
   // lamellar rows and headband still read at that range
   for (const k of ['hips', 'torso', 'head', 'arm', 'thigh', 'shin']) g['mid_' + k] = sculpt(grunt[k], V * 2, 0.12);
-  const shu = bodyParts(SHU, false);                                                  // Shu allies: same parts, all three LODs
+  const shu = bodyParts(ap, false);                                                   // allies: same parts, all three LODs
   for (const k of ['hips', 'torso', 'head', 'arm', 'thigh', 'shin']) { g['s_' + k] = sculpt(shu[k], V, 0.12); g['smid_' + k] = sculpt(shu[k], V * 2, 0.12); }
   // grunt shadow proxies: the same solid boxes, un-voxelised (~12 tris each) — the shadow pass never sees the voxel
   // detail. Hips + torso + head share one proxy on the torso matrix.
@@ -172,7 +202,8 @@ function buildCrowdGeometries() {
   for (const k of ['arm', 'thigh', 'shin']) g['far_' + k] = boxesGeometry(far(grunt[k]));
   g.sfar_trunk = boxesGeometry([...far(shu.hips, -J.waist), ...far(shu.torso), ...far(shu.head, J.neck)]);
   for (const k of ['arm', 'thigh', 'shin']) g['sfar_' + k] = boxesGeometry(far(shu[k]));
-  Object.assign(g, weaponGeos());
+  Object.assign(g, weaponGeos(gp));
+  for (const [k, geo] of Object.entries(weaponGeos(ap))) g['s_' + k] = geo;           // allies: their own tassels / shields
   // officer marker ▼ (voxel rows 7-5-3-1, gold rim around red)
   const tri = [];
   for (let r = 0; r < 4; r++) for (let q = 0; q < 7 - r * 2; q++) {
@@ -185,13 +216,14 @@ function buildCrowdGeometries() {
   return g;
 }
 
-function flagTexture(glyph = '魏', bg = '#b8301e') {
+/** An army standard: glyph in ink on a bg cloth (lighter panel behind the character, gold edging, swallow tail). */
+function flagTexture(glyph, bg, ink = '#1a0f0c') {
   const c = document.createElement('canvas'); c.width = 64; c.height = 112;
   const g = c.getContext('2d');
   g.fillStyle = bg; g.fillRect(0, 0, 64, 112);
   g.fillStyle = '#e0b058'; g.fillRect(0, 0, 64, 5); g.fillRect(0, 0, 4, 112); g.fillRect(60, 0, 4, 112);
   g.fillStyle = 'rgba(255,225,180,0.28)'; g.fillRect(10, 16, 44, 60);                  // lighter panel behind the character
-  g.fillStyle = '#1a0f0c';
+  g.fillStyle = ink;
   g.font = 'bold 44px "Xingkai SC","STXingkai","Kaiti SC","STKaiti","KaiTi","Songti SC",serif';
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText(glyph, 32, 46);
@@ -339,17 +371,23 @@ const HOT = [1.55, 1.53, 1.5], GOLD = [1.0, 0.6, 0.12], AMBER = [1.0, 0.4, 0.07]
 const EMBER = 0.3;                                                 // KO'd bodies keep a dim red rim until they land
 
 export function createCrowdView(scene, game) {
-  const crowd = game.crowd, N = crowd.T, NW = crowd.N;          // N: every soldier (Wei army + Shu allies ≥ NW)
-  const geos = buildCrowdGeometries();
+  const crowd = game.crowd, N = crowd.T, NW = crowd.N;          // N: every soldier (foe army + allies ≥ NW)
+  const { foe, ally } = game.army, fp = palette(foe), ap = palette(ally).grunt;
+  const geos = buildCrowdGeometries(fp.grunt, fp.officer, ap);
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, metalness: 0.06, flatShading: true });
+  // accent gains per hue (red, green, blue, purple): the max of the two armies' glow (armies.js)
+  const uGlow = { value: new THREE.Vector4(...foe.glow.map((v, k) => Math.max(v, ally.glow[k]))) };
   nearFade(mat, 2.4, (sh) => {
-    // backlit golden hour: a little self-light keeps the army from reading as black blocks, and the Wei reds
-    // (headbands, crests, sashes) glow enough to read as a pattern at distance
-    sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+    // backlit golden hour: a little self-light keeps the army from reading as black blocks, and the armies' accent
+    // colours (headbands, crests, tassels, sashes) glow enough to read as a pattern at distance and at night. The hue
+    // masks are disjoint (red: 魏 · green: 蜀 / 劉 · blue: 曹 · purple: 董); dark coats stay under them
+    sh.uniforms.uGlow = uGlow;
+    sh.fragmentShader = 'uniform vec4 uGlow;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
       #ifdef USE_COLOR
-        float cRed = smoothstep(0.3, 0.5, vColor.r - max(vColor.g, vColor.b));
-        float cGreen = smoothstep(0.15, 0.35, vColor.g - max(vColor.r, vColor.b));   // Shu headbands / coats
-        totalEmissiveRadiance += vColor.rgb * (0.08 + cRed * 0.32 + cGreen * 0.1);
+        vec4 cHue = vec4(smoothstep(0.3, 0.5, vColor.r - max(vColor.g, vColor.b)),
+          smoothstep(0.15, 0.35, vColor.g - max(vColor.r, vColor.b)), smoothstep(0.15, 0.35, vColor.b - max(vColor.r, vColor.g)),
+          smoothstep(0.08, 0.2, min(vColor.r, vColor.b) - vColor.g));
+        totalEmissiveRadiance += vColor.rgb * (0.08 + dot(cHue, uGlow));
       #endif`);
   });
   patchHitMaterial(mat);                                     // hit-impact: victim flash/tint
@@ -392,7 +430,7 @@ export function createCrowdView(scene, game) {
     }
     return m;
   };
-  const G = crowd.grunts, O = CROWD.officers, A = CROWD.allySlots, GA = G + A;
+  const G = crowd.grunts, O = CROWD.officerSlots, A = CROWD.allySlots;   // O: every slot the story may field at once
   // one body-part set from geos[pre + part] for n soldiers (two arms / thighs / shins each). Voxel sets: the solid-box
   // proxies cast their shadows (cast: every part casts its own — officers); far box sets: one trunk + limbs, all cast
   const parts = (pre, n, cast = false) => ({ hips: mk(geos[pre + 'hips'], n, mat, cast), torso: mk(geos[pre + 'torso'], n, mat, cast || geos.shadow_trunk),
@@ -402,19 +440,32 @@ export function createCrowdView(scene, game) {
   const PG = parts('', G);
   const M = {
     crest: mk(geos.crest, G),
-    spear: mk(geos.spear, GA), sword: mk(geos.sword, GA), shield: mk(geos.shield, GA), mid_shield: mk(geos.mid_shield, GA), far_shield: mk(geos.far_shield, GA), glaive: mk(geos.glaive, G + O), pole: mk(geos.pole, GA),
+    spear: mk(geos.spear, G), sword: mk(geos.sword, G), shield: mk(geos.shield, G), mid_shield: mk(geos.mid_shield, G), far_shield: mk(geos.far_shield, G), glaive: mk(geos.glaive, G + O), pole: mk(geos.pole, G),
   };
+  const MA = { spear: mk(geos.s_spear, A), sword: mk(geos.s_sword, A), shield: mk(geos.s_shield, A), mid_shield: mk(geos.s_mid_shield, A), far_shield: mk(geos.s_far_shield, A), glaive: M.glaive, pole: mk(geos.s_pole, A) };   // allies' weapons
   const PO = parts('o_', O, true);
+  // named officers' looks (crowd.offLook): one officer part set per look object, sculpted the first time it is drawn
+  const looks = new Map();
+  const officerSet = (look) => {
+    if (!look) return PO;
+    let set = looks.get(look);
+    if (!set) {
+      const pre = `L${looks.size}_`;
+      Object.assign(geos, officerGeos(withLook(fp.officer, look), pre));
+      looks.set(look, (set = parts(pre, O, true)));
+    }
+    return set;
+  };
   // LOD by distance from the camera, same pose and matrices: full voxel set inside MID_LOD m, the half-resolution set
   // (≈ 1.2k tris instead of ≈ 4.9k) to FAR_LOD, then the low-poly box set (one trunk + limbs)
   const MID_LOD = 8, FAR_LOD = 28;
   const PM = parts('mid_', G), PF = farParts('far_', G);
-  // Shu allies: near / mid / far sets
+  // allies: near / mid / far sets
   const PS = parts('s_', A), PSM = parts('smid_', A), PSF = farParts('sfar_', A);
   let farNow = false, midNow = false;
   const uTime = { value: 0 };
   const flagGeo = new THREE.PlaneGeometry(0.9, 1.5, 4, 6).rotateX(Math.PI / 2).translate(0.5, 0, 1.78);
-  const flagMat = new THREE.MeshStandardMaterial({ map: flagTexture(), side: THREE.DoubleSide, alphaTest: 0.5, roughness: 0.9 });
+  const flagMat = new THREE.MeshStandardMaterial({ map: flagTexture(foe.glyph, foe.flag, foe.ink), side: THREE.DoubleSide, alphaTest: 0.5, roughness: 0.9 });
   const flagWave = (sh) => {
     sh.uniforms.uTime = uTime;
     sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
@@ -426,10 +477,10 @@ export function createCrowdView(scene, game) {
   // into a chain-mail pattern)
   nearFade(flagMat, 3.2, flagWave);
   M.flag = mk(flagGeo, G, flagMat, false);
-  const shuFlagMat = flagMat.clone();
-  shuFlagMat.map = flagTexture('蜀', '#2f7a36');
-  nearFade(shuFlagMat, 3.2, flagWave, 'shu');
-  M.shuFlag = mk(flagGeo, A, shuFlagMat, false);
+  const allyFlagMat = flagMat.clone();
+  allyFlagMat.map = flagTexture(ally.glyph, ally.flag, ally.ink);
+  nearFade(allyFlagMat, 3.2, flagWave, 'ally');
+  MA.flag = mk(flagGeo, A, allyFlagMat, false);
   const markerMat = new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(0.85, 0.8, 0.75), fog: false });
   nearFade(markerMat, 5);
   M.marker = mk(geos.marker, O, markerMat, false);
@@ -630,8 +681,8 @@ export function createCrowdView(scene, game) {
     // telegraph: the last 14 sf of a blow that will really come (feints don't flare)
     const hotStrike = s === ST.ATTACK && !crowd.feint[i] && crowd.foe[i] < 0 && t >= game.diff.windup - 14 && t < game.diff.windup;
     if (cap) _c.setRGB(_ch.r * 1.45, _ch.g * 1.1, _ch.b * 0.7); else _c.copy(_ch);                  // captains: bronze armour
-    const ally = i >= NW, far = farNow && !officer;
-    const P = officer ? PO : ally ? (far ? PSF : midNow ? PSM : PS) : far ? PF : midNow ? PM : PG;
+    const ally = i >= NW, far = farNow && !officer, W = ally ? MA : M;
+    const P = officer ? officerSet(crowd.offLook[i - crowd.grunts]) : ally ? (far ? PSF : midNow ? PSM : PS) : far ? PF : midNow ? PM : PG;
     mHips.copy(_root); if (!far) push(P.hips, mHips, _c);
     local(mTorso, mHips, 0, J.waist, 0, C[TO], C[TO + 1], C[TO + 2]); push(P.torso, mTorso, _c);
     local(mOut, mTorso, 0, J.neck, 0, C[HE], C[HE + 1], C[HE + 2]); if (!far) push(P.head, mOut, _ch);
@@ -645,10 +696,10 @@ export function createCrowdView(scene, game) {
     // weapons
     _g[0] = _g[1] = _g[2] = 0;                               // hit-impact: the victim tint is body-only (DW keeps weapons neutral)
     local(mW, mArmR, 0, -J.hand, 0, C[WR], C[WR + 1], C[WR + 2]);
-    const wm = g === 0 ? M.spear : g === 1 ? M.sword : g === 2 ? M.glaive : M.pole;
+    const wm = g === 0 ? W.spear : g === 1 ? W.sword : g === 2 ? W.glaive : W.pole;
     push(wm, mW, _c);
-    if (g === 3) push(ally ? M.shuFlag : M.flag, mW, null);
-    if (g === 1) push(far ? M.far_shield : midNow ? M.mid_shield : M.shield, local(mOut, mArmL, 0, -J.hand, 0, C[WL], C[WL + 1], C[WL + 2]), _c);
+    if (g === 3) push(W.flag, mW, null);
+    if (g === 1) push(far ? W.far_shield : midNow ? W.mid_shield : W.shield, local(mOut, mArmL, 0, -J.hand, 0, C[WL], C[WL + 1], C[WL + 2]), _c);
     // telegraph: pixel-star glint on the weapon tip through the wind-up (drawn over the crowd); a real blow flares it
     // into a big solid red pixel star (white core) for the last 14 sf
     if (s === ST.ATTACK && t >= 3 && t < game.diff.windup && M.glint.count < 32 && crowd.foe[i] < 0) {
@@ -679,7 +730,8 @@ export function createCrowdView(scene, game) {
       for (let i = 0; i < N; i++) {
         const s = crowd.st[i];
         if (s === ST.OFF) { seen[i] = 0; continue; }
-        if (!frustum.intersectsSphere(sph.set(sph.center.set(crowd.x[i], crowd.y[i] + 1, crowd.z[i]), 2.5))) { seen[i] = 0; continue; }
+        // sim y is height above ground: the sphere sits on the terrain (raised arenas were culled while on screen)
+        if (!frustum.intersectsSphere(sph.set(sph.center.set(crowd.x[i], crowd.y[i] + 1 + ground(crowd.x[i], crowd.z[i]), crowd.z[i]), 2.5))) { seen[i] = 0; continue; }
         const d2 = (crowd.x[i] - camera.position.x) ** 2 + (crowd.z[i] - camera.position.z) ** 2;
         farNow = d2 > FAR_LOD * FAR_LOD; midNow = d2 > MID_LOD * MID_LOD;
         // standing soldiers (idle ranks) are recomputed every 4th frame and replayed in between
@@ -692,6 +744,13 @@ export function createCrowdView(scene, game) {
         m.visible = m.count > 0;                                                          // no empty draw calls
       }
       for (const [p, m] of proxies) { p.count = m.count; p.visible = m.visible; }
+    },
+    /** Drop every mesh, geometry, material and standard texture (main.js rebuilds the view for a new army pair). */
+    dispose() {
+      for (const m of [...meshes, ...proxies.map(([p]) => p)]) { scene.remove(m); m.dispose(); }
+      for (const k in geos) geos[k].dispose();
+      flagGeo.dispose();
+      for (const m of new Set([...meshes.map((m) => m.material), proxyMat])) { m.map?.dispose(); m.dispose(); }
     },
   };
 }

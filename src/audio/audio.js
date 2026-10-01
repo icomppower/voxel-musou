@@ -1,10 +1,10 @@
 // Battle audio. Plays the offline-baked bank (bank.js) off bus events:
-//  swing whooshes by move shape/weight + Zhao Yun kiai, cued LEAD sim frames before each hitbox window opens (sound leads
+//  swing whooshes by move shape/weight + the officer's kiai (his kit.voice), cued LEAD sim frames before each hitbox window opens (sound leads
 //  the trail) · layered slash impacts on the `hits` frame (click + crack + thwack + thump + crunch, armour clank; 3+
 //  victims add a body-cluster layer and packed crunch grains) with a post-hitstop "blow-away" release on heavy hits ·
 //  enemy grunts, death cries, body falls · dodge / jump / land / hurt · Musou gauge chime, activation flash + shout,
 //  close-up hush + charge drone swelling into the contact blast, stab flurry, pre-burst inhale, finishing blast + death
-//  chorus · reinforcement horn + army roar · foreground army shouts ·
+//  chorus · reinforcement horn + army roar · foreground army shouts · boss blows (a low thud), poise breaks, 肉包 chime ·
 //  looping distant-battle bed, war drums and a power-chord battle riff that swell with combat
 //  intensity and duck under hits and the Musou.
 // Mix: sfx / voice / bed buses + convolution reverb send → master EQ (matched to the benchmark clips' octave balance) →
@@ -16,7 +16,7 @@
 // Positional: pan + distance attenuation from the hero, relative to the sim camera yaw. Read-only on the sim; audio
 // randomness is Math.random, never the sim RNG. Starts on the first user gesture.
 import { on } from '../core/events.js';
-import { buildBank, makeIR, noiseBuf } from './bank.js';
+import { buildBank, bakeVoice, makeIR, noiseBuf } from './bank.js';
 
 const rnd = (a, b) => a + (b - a) * Math.random();
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -30,7 +30,7 @@ const kindOf = (w) => (w.heavy ? 'heavy' : w.shape === 'circle' ? 'spin' : w.sha
 const KIAI = {
   n1: [['ha', 'hah']], n2: [['sei', 'hah']], n3: [['toh', 'tah']], n4: [['hyah']], n5: [['sei', 'ha'], ['tah']], n6: [['seiya']],
   c1: [['hyah', 'haa']], c2: [['tah', 'toh']], c3: [['hah'], ['seiya']], c4: [['uora']], c5: [['haa']], c6: [['uora'], ['seiya']],
-  dash: [['hyah']], jatk: [['ha', 'sei']], jc: [['haa']],
+  dash: [['hyah']], jatk: [['ha', 'sei']], ja2: [['hah', 'tah']], ja3: [['seiya']], jc: [['haa']],
 };
 const VOICE_P = 0.8;
 const VOX = 0.72;                 // voice bus: ≈ 6 dB under the sfx stem, so kiai and shouts never mask the impacts
@@ -52,6 +52,18 @@ export function createAudio(game) {
   const lastPick = new Map();
   const B = {};                               // filled progressively by the offline bake (combat sounds first)
   buildBank(B).then(startBed, (e) => console.warn('audio bank', e));
+  // the officer's own voice (kit.voice → bank.js bakeVoice): baked once per distinct voice, swapped into B at battle start
+  const voices = new Map();
+  let voiceKey = null;
+  function useVoice() {
+    const v = game.hero.kit.voice || {}, key = JSON.stringify(v);
+    if (key === voiceKey) return;
+    voiceKey = key;
+    if (!voices.has(key)) voices.set(key, bakeVoice(v));
+    voices.get(key).then((set) => { if (voiceKey === key) Object.assign(B, set); }, (e) => console.warn('audio voice', e));
+  }
+  useVoice();
+  on('scenario', useVoice);
 
   function start() {
     if (ctx) { if (ctx.state !== 'running') ctx.resume(); return; }
@@ -289,6 +301,19 @@ export function createAudio(game) {
     play(pick(B.enemySwing), { gain: 0.3 * att, rate: rnd(0.85, 1.1), pan, send: 0.1, bus: underBus });
     if (e.officer || Math.random() < 0.25) play(pick(B.grunt), { gain: 0.25 * att, rate: rnd(1.05, 1.2), pan, bus: vox, send: 0.15 });
   });
+
+  // ---- actors lane: a boss blow lands (a heavy, low thud under the blast, placed; the bed ducks), a poise break (armour
+  // crash), a 肉包 eaten (the gauge chime, pitched up)
+  on('actor:strike', (e) => {
+    if (!ok()) return;
+    const { pan, att } = place(e.x, e.z);
+    play(pick(B.hitHeavy), { gain: 1.1 * (0.6 + 0.4 * att), rate: rnd(0.6, 0.7), pan: pan * 0.6, send: 0.3, prio: 1 });
+    play(pick(B.land), { gain: 0.9 * (0.6 + 0.4 * att), rate: rnd(0.5, 0.6), pan: pan * 0.6, send: 0.25, prio: 1 });
+    if (e.kind === 'leap') play(pick(B.blow), { gain: 0.7, rate: 0.8, pan, send: 0.3 });
+    duck(0.5, 0.15, 0.25);
+  });
+  on('actor:hit', (e) => { if (ok() && e.stagger) play(pick(B.clank), { gain: 0.8, rate: 0.7, send: 0.2, prio: 1 }); });
+  on('pickup', () => ok() && play(B.ready, { gain: 0.45, rate: 1.35, send: 0.25, prio: 1 }));
 
   // ---- Musou
   on('musou:ready', () => ok() && play(B.ready, { gain: 0.5, send: 0.3, prio: 1 }));

@@ -4,3 +4,5 @@
 *.swp
 .vercel
 .env*
+scratch/
+.claude/

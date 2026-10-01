@@ -102,6 +102,11 @@ export function createAim(game, proj) {
       const dd = Math.hypot(c.x[i] - bx, c.z[i] - bz);
       if (dd < 1.8) near = Math.max(near, 1 - dd / 1.8);
     }
+    for (const a of game.actors.list) {                        // actors lane: a hero-model officer at the lens (his size)
+      if (a.state === 'gone' || a.state === 'down') continue;
+      const dd = Math.hypot(a.x - bx, a.z - bz) - a.r + 0.4;
+      if (dd < 1.8) near = Math.max(near, 1 - Math.max(0, dd) / 1.8);
+    }
     crowdK += (near - crowdK) * (near > crowdK ? 0.3 : 0.05);                 // rise fast when they close in, settle slowly
     return Object.assign(shot, { yaw: A.yaw, dist: 3.2 - 0.5 * d + 1.0 * crowdK, pitch: 0.2 + 0.14 * crowdK - A.pitch * 0.85, fov: 42 - 8 * d,
       height: 2.1 + 0.6 * crowdK + A.pitch * 0.3, side: 0.62, shake: 0.4 });

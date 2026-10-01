@@ -1,21 +1,22 @@
-// Battlefield dressing, zone by zone along the 定軍山 route: 蜀軍本陣 (palisade, gate towers, tents, 蜀 standards,
-// braziers), 漢水 ford (reeds, stepping stones in river.js, supply carts, wrecks), 山道 (Wei standards, watchtowers
-// and archers on the cliff tops over the chokepoint, its barricade), the plaza before the wall (siege debris),
-// 魏軍營寨 courtyard (palisade, tents beyond it, racks, braziers), the ramp (torches, flags, its barricade) and the
-// summit (夏侯淵's command pavilion, war drums, the great 夏侯 banner, the beacon whose smoke marks the goal from the
-// valley), plus reserve armies of both sides massed off the walkable ground. Wind-driven cloth, fires (voxel flames +
-// embers), smoke columns. Everything animates as a pure function of render time (+ the gate states, which are sim
-// state read here) → capture-deterministic; nothing writes sim state.
+// Battlefield dressing kit: the loaded map's def.dress(k) lays out its standards, camps, towers, fires, carts, reserve
+// armies… through the kit k (buildDressing below; API in the header of src/world/maps/index.js), in army colours
+// (k.army: banners carry the foe's / ally's glyph). Wind-driven cloth, fires (voxel flames + embers), smoke columns.
+// Everything animates as a pure function of render time (+ the gate states, which are sim state read here, and
+// set-piece fire switches) → capture-deterministic; nothing writes sim state.
 import * as THREE from 'three';
 import { boxesGeometry, shade } from '../core/voxel.js';
 import { makeRng } from '../core/rng.js';
 import { figureGeometry, watchtower, pagoda, paperLantern, lit } from './castle.js';
-import { TERRAIN as G, ROUTE, GATES, ground, riverZ, routeDist, routeNear, node, FORDS, WALL_Z, GATE_X, CAMP_H } from './map.js';
+import { TERRAIN, ROUTE, GATES, WATER, ground, waterD, routeDist, routeNear, node } from './map.js';
 import { topAt, GRASS_TIME } from './terrain.js';
 import { SUN_DIR, NOISE_GLSL } from './sky.js';
 import { lensClear } from '../camera/occlusion.js';
 
-const WIND = new THREE.Vector3(0.75, 0, 0.55).normalize();   // blows up the valley, toward the castle's end
+// the wind (unit, xz): smoke, embers, flag yaw and the flames' lean follow it. buildDressing resets it to the default
+// (up the valley, toward 定軍山's castle end); a map may set it in dress() before its flags go up, and a set piece may
+// swing it at run time (赤壁's east wind: flags are re-aimed by the map, smoke / embers / flames follow on their own)
+const WIND0 = new THREE.Vector3(0.75, 0, 0.55).normalize();
+export const WIND = WIND0.clone();
 const frac = (x) => x - Math.floor(x);
 const FOCUS = { value: new THREE.Vector3() };   // the camera's focus (hero), for the reeds' sight line
 
@@ -138,7 +139,7 @@ function glowTexture() {
  *  only the core adds light, so 2-3 overlapping cards stay orange. instanceColor = [seed, intensity, -]; the card
  *  leans downwind at the tip and fades out within 7 m of the lens. */
 const FLAME_VS = /* glsl */`
-  uniform float uTime;
+  uniform float uTime; uniform vec3 uWind;
   varying vec2 vUv; varying vec3 vP; varying float vNear; flat varying float vGrid;
   void main() {
     vec3 base = instanceMatrix[3].xyz;
@@ -146,7 +147,7 @@ const FLAME_VS = /* glsl */`
     vec3 right = normalize(vec3(viewMatrix[0][0], 0.0, viewMatrix[2][0]) + vec3(1e-5, 0.0, 0.0));
     vec3 wp = base + right * position.x * w + vec3(0.0, (position.y + 0.5) * h, 0.0);
     float sw = sin(uTime * 2.7 + instanceColor.x * 40.0) * 0.6 + sin(uTime * 5.3 + instanceColor.x * 17.0) * 0.4;
-    wp.xz += vec2(0.8, 0.6) * uv.y * uv.y * h * (0.12 + 0.08 * sw);
+    wp.xz += uWind.xz * uv.y * uv.y * h * (0.12 + 0.08 * sw);
     vec4 mv = viewMatrix * vec4(wp, 1.0);
     vNear = smoothstep(2.5, 7.0, -mv.z);
     float bd = max(-(viewMatrix * vec4(base, 1.0)).z, 0.5);                 // per card (flat): no seams inside a card
@@ -179,9 +180,11 @@ const FLAME_FS = /* glsl */`
     gl_FragColor = vec4(c * smoothstep(0.05, 0.16, heat) * k, a * k);
   }`;
 
-/** list: [x, y, z, scale, smoke = scale ≥ 1.3, gate id]: a gate-linked fire only burns once that gate is open (the
- *  barricade was fired: map.js GATES). update(t). Per fire: 2-3 flame cards + 2 detaching licks (flame shader),
- *  a stream of ember cubes, dark smoke puffs lit from below (big fires), a dim halo and a firelight pool. */
+/** list: [x, y, z, scale, smoke = scale ≥ 1.3, gate, wall]: gate = a gate id (burns only once that gate is open: the
+ *  barricade was fired, map.js GATES) or a function (burns while it returns true: a set piece's switch). update(t).
+ *  Per fire: 2-3 flame cards + 2 detaching licks (flame shader), a stream of ember cubes, dark smoke puffs lit from
+ *  below (big fires), a dim halo and a firelight pool. */
+const out = (g) => g && (typeof g === 'function' ? !g() : !GATES[g].open);
 function fireSystem(scene, list) {
   const r = makeRng(77);
   const cards = [], embers = [], puffs = [];
@@ -196,7 +199,7 @@ function fireSystem(scene, list) {
     if (smoke) for (let i = 0; i < 30; i++) puffs.push({ x, y, z, s, g, ph: i / 30 + r.range(0, 0.02), sp: r.range(0.075, 0.095), ox: r.range(-0.8, 0.8), oz: r.range(-0.8, 0.8), rot: r.range(0, 6.28), v: r.range(0.8, 1.2) });
   }
   const uTime = { value: 0 };
-  const cm = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderMaterial({ vertexShader: FLAME_VS, fragmentShader: FLAME_FS, uniforms: { uTime },
+  const cm = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderMaterial({ vertexShader: FLAME_VS, fragmentShader: FLAME_FS, uniforms: { uTime, uWind: { value: WIND } },
     blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
     transparent: true, depthWrite: false, side: THREE.DoubleSide }), cards.length);
   cm.frustumCulled = false; cm.renderOrder = 2;
@@ -252,7 +255,7 @@ function fireSystem(scene, list) {
   return (t) => {
     uTime.value = t;
     for (let i = 0; i < cards.length; i++) {
-      const f = cards[i], s = f.g && !GATES[f.g].open ? 0 : f.s;
+      const f = cards[i], s = out(f.g) ? 0 : f.s;
       if (f.lick) {                                                              // a tongue tearing off and rising
         const k = frac(t * f.sp + f.ph), sz = s * (1 - k * 0.8);
         p.set(f.x + (f.ox + WIND.x * k * 0.9) * s, f.y + (0.7 + k * 2.1) * s, f.z + (f.oz + WIND.z * k * 0.9) * s);
@@ -267,7 +270,7 @@ function fireSystem(scene, list) {
     }
     cm.instanceMatrix.needsUpdate = true; cm.instanceColor.needsUpdate = true;
     for (let i = 0; i < embers.length; i++) {
-      const f = embers[i], k = frac(t * f.sp + f.ph), s = f.g && !GATES[f.g].open ? 0 : f.s;
+      const f = embers[i], k = frac(t * f.sp + f.ph), s = out(f.g) ? 0 : f.s;
       p.set(f.x + f.ox * s + WIND.x * k * 10 * s + Math.sin(k * 19 + f.w) * 0.5, f.y + 0.8 + k * 13 * s, f.z + f.oz * s + WIND.z * k * 10 * s + Math.cos(k * 15 + f.w) * 0.5);
       const size = s && 0.08 * (1 - k * 0.6) * (Math.sin(t * 23 + f.w * 5) > -0.3 ? 1 : 0.25);
       fm.setMatrixAt(i, m.compose(p, q.identity(), sc.set(size, size, size)));
@@ -275,7 +278,7 @@ function fireSystem(scene, list) {
     }
     fm.instanceMatrix.needsUpdate = true; fm.instanceColor.needsUpdate = true;
     for (let j = 0; j < puffs.length; j++) {
-      const f = puffs[j], k = frac(t * f.sp + f.ph), s = f.g && !GATES[f.g].open ? 0 : f.s;
+      const f = puffs[j], k = frac(t * f.sp + f.ph), s = out(f.g) ? 0 : f.s;
       const drift = k * k * 15 * s;
       p.set(f.x + f.ox * s + WIND.x * drift, f.y + 1.6 * s + k * 17 * s, f.z + f.oz * s + WIND.z * drift);
       const size = s * f.v * (0.7 + 3.6 * k) * Math.min(1, k / 0.06) * (1 - Math.max(0, (k - 0.78) / 0.22));
@@ -288,7 +291,7 @@ function fireSystem(scene, list) {
     }
     sm.instanceMatrix.needsUpdate = true; sm.instanceColor.needsUpdate = true;
     for (let j = 0; j < sites.length; j++) {
-      const f = sites[j], s = f.g && !GATES[f.g].open ? 0 : f.s, fl = 0.8 + 0.12 * Math.sin(t * 11 + f.ph) + 0.08 * Math.sin(t * 23.7 + f.ph * 3);
+      const f = sites[j], s = out(f.g) ? 0 : f.s, fl = 0.8 + 0.12 * Math.sin(t * 11 + f.ph) + 0.08 * Math.sin(t * 23.7 + f.ph * 3);
       hm.setMatrixAt(j, m.compose(p.set(f.x, f.y + 1.1 * s, f.z), q.identity(), sc.set(3.8 * s * fl, 4.6 * s * fl, 1)));
       hm.setColorAt(j, c.setRGB(0.42, 0.13, 0.03).multiplyScalar(fl));
       pm.setMatrixAt(j, m.compose(p.set(f.x, f.py + 0.07, f.z), q.identity(), sc.set(5.2 * s * fl, 1, 5.2 * s * fl).multiplyScalar(f.wall ? 0 : 1)));
@@ -300,7 +303,7 @@ function fireSystem(scene, list) {
 
 
 // ---------------------------------------------------------------- set pieces (merged boxes on the ground under them)
-const inAt = (x, z) => G.in[node(x, z)];   // walk inside value (m)
+const inAt = (x, z) => TERRAIN.in[node(x, z)];   // walk inside value (m)
 
 /** Palisade of sharpened stakes with two rails along a ground-following polyline [[x, z], …]. */
 function palisade(b, r, pts) {
@@ -461,10 +464,34 @@ function barricade(scene, x, z, yaw, half) {
   return { m, mat, y: gy0 };
 }
 
-export function buildDressing(scene, { castle, fieldFires }) {
-  const r = makeRng(44);
-  const poles = [], cloths = [], props = [];
-  // sunlight through the cloth: emissive = the banner's own texture, so 魏/蜀 read even when backlit
+// ---------------------------------------------------------------- faction cloth
+// k.army sides are { glyph, flag, banner? } (C3 armies): cloth palettes come from the army's own `banner` over ones
+// derived from its flag colour. No army given: 定軍山's 魏 / 蜀 (these banner palettes are its authored look).
+const DEFAULT_ARMY = {
+  foe: { glyph: '魏', flag: '#b8301e', banner: { bg: '#7d2a1f', fg: '#1a0d0a', border: '#4a1712', pennant: ['#a3321f', '#6a1c12'], fallen: ['#a0583c', '#4a2418', '#7a3a26'], band: 0xa82a1c } },
+  ally: { glyph: '蜀', flag: '#2f7a36', banner: { bg: '#c7a574', fg: '#2a120a', border: '#8e2a1c', flag: ['#b89668', '#9a2e1e'], band: 0x3c7a3a } },
+};
+const hex = (c) => (typeof c === 'number' ? '#' + c.toString(16).padStart(6, '0') : c);
+const mixHex = (a, b, t) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - t) + parseInt(b.slice(i, i + 2), 16) * t).toString(16).padStart(2, '0')).join('');
+/** Cloth palette of an army side: { bg, fg, border (standards), flag [bg, border] (small flags), pennant [bg, border]
+ *  (blank tower pennants), fallen [bg, fg, border] (trampled standards), band (reserve troops' headbands) }. */
+function palette(a) {
+  const f = hex(a.flag), bg = mixHex(f, '#1c1814', 0.4), border = mixHex(f, '#000000', 0.6);
+  return { bg, fg: '#1a0d0a', border, flag: [mixHex(bg, '#000000', 0.08), border], pennant: [f, border], fallen: [mixHex(f, '#c8a080', 0.4), '#4a2418', border], band: parseInt(f.slice(1), 16), ...a.banner };
+}
+
+/**
+ * The loaded map's dressing into `root` (map.js loadMap(def) and the terrain first): opens the kit k (API: the header
+ * of src/world/maps/index.js), runs def.dress(k) — the authored layout —, then def.build(root, k) — custom set pieces —,
+ * then meshes it all. opts: { army: { foe, ally } | undefined, castle: world.js's castle record | null, sites: the world's
+ * firelight sites }. Returns { fires (vfx embers: [{ position }]), gates (barricades by gate id: { m, mat, y }),
+ * set (build()'s { update?, sets? }), update(t, focus) }.
+ */
+export function buildDressing(root, def, { army, castle = null, sites = [] } = {}) {
+  WIND.copy(WIND0);
+  const r = makeRng(44), A = army || DEFAULT_ARMY, PAL = { foe: palette(A.foe), ally: palette(A.ally) }, HW = WATER ? WATER.hw : 0;
+  const poles = [], cloths = [], props = [], glowBoxes = [], fires = [], embers = [], farFires = [], troops = [], reeds = [], gates = {};
+  // sunlight through the cloth: emissive = the banner's own texture, so the glyphs read even when backlit
   // lensClear (also on the poles / props below): a banner or tent between the lens and the hero blacked out a third of the frame
   // DoubleSide cloth seen from behind showed the glyph mirror-imaged (魏 read backwards): back faces sample the colour
   // with u flipped (the alpha / tattered hem stays put, so the silhouette matches from both sides)
@@ -477,23 +504,24 @@ export function buildDressing(scene, { castle, fieldFires }) {
     return m;
   };
   const cm = (map, alpha = true) => lensClear(unmirror(new THREE.MeshStandardMaterial({ map, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: 0.22, side: THREE.DoubleSide, alphaTest: alpha ? 0.5 : 0, roughness: 0.92, flatShading: true })), 2.5);
+  /** Cloth material with a painted glyph ('' = blank; two glyphs stack): { bg, fg, border, w = 128, h = 256, tatter = true, seed }. */
+  const banner = (glyph, o) => cm(bannerTexture(glyph, o), o.tatter !== false);
+  const pf = PAL.foe, pa = PAL.ally;
   const mats = {
-    wei: cm(bannerTexture('魏', { bg: '#7d2a1f', fg: '#1a0d0a', border: '#4a1712', seed: 3 })),
-    shu: cm(bannerTexture('蜀', { bg: '#c7a574', fg: '#2a120a', border: '#8e2a1c', w: 192, h: 256, seed: 5 })),
-    shuFlag: cm(bannerTexture('蜀', { bg: '#b89668', fg: '#2a120a', border: '#9a2e1e', w: 128, h: 96, tatter: false, seed: 6 }), false),
-    han: cm(bannerTexture('漢', { bg: '#2f5a3a', fg: '#e8d6a8', border: '#c7a574', w: 128, h: 256, seed: 8 })),
-    red: cm(bannerTexture('', { bg: '#a3321f', fg: '#000', border: '#6a1c12', w: 64, h: 128, seed: 7 })),
-    xiahou: cm(bannerTexture('夏侯', { bg: '#1c1414', fg: '#d8b060', border: '#7d2a1f', w: 160, h: 320, seed: 9 })),
+    foe: banner(A.foe.glyph, { bg: pf.bg, fg: pf.fg, border: pf.border, seed: 3 }),
+    ally: banner(A.ally.glyph, { bg: pa.bg, fg: pa.fg, border: pa.border, w: 192, h: 256, seed: 5 }),
+    allyFlag: banner(A.ally.glyph, { bg: pa.flag[0], fg: pa.fg, border: pa.flag[1], w: 128, h: 96, tatter: false, seed: 6 }),
+    pennant: banner('', { bg: pf.pennant[0], fg: '#000', border: pf.pennant[1], w: 64, h: 128, seed: 7 }),
   };
   const addCloth = (mat, w, h, kind, x, y, z, yaw) => {
     const c = cloth(mat, w, h, kind, r.range(0, 6.28));
     c.position.set(x, y, z); c.rotation.y = yaw;
-    scene.add(c); cloths.push(c);
+    root.add(c); cloths.push(c);
     return c;
   };
   /** Standard: pole + crossbar, cloth hangs from the bar and faces the nearest road point (the player's line of travel)
    *  or `face` [x, z]. */
-  const standard = (x, z, s = 1, mat = mats.wei, P = 8.5 * s, face = routeNear(x, z).p) => {
+  const standard = (x, z, s = 1, mat = mats.foe, P = 8.5 * s, face = routeNear(x, z).p) => {
     const W = 2.3 * s, Hc = 4.3 * s, gy = topAt(x, z);
     const yaw = Math.atan2(face[0] - x, face[1] - z) + r.range(-0.35, 0.35);
     const cx = Math.cos(yaw), cz = -Math.sin(yaw);
@@ -503,225 +531,24 @@ export function buildDressing(scene, { castle, fieldFires }) {
     poles.push({ s: [0.12, 0.8 * s, 0.12], p: [x, gy + P + 0.4 * s, z], c: 0xb8b0a0 });
     addCloth(mat, W, Hc, 'hang', x + cx * 0.12, gy + P - 0.4 * s, z + cz * 0.12, yaw);
   };
-  const flag = (x, y, z, h = 3.2, mat = mats.shuFlag) => {
+  const flag = (x, y, z, h = 3.2, mat = mats.allyFlag) => {
     poles.push({ s: [0.12, h + 1.4, 0.12], p: [x, y + (h + 1.4) / 2, z], c: 0x3b2a1e });
     addCloth(mat, 1.9, 1.3, 'flag', x, y + h + 1.3, z, Math.atan2(-WIND.z, WIND.x));
   };
-  const tower = (x, z, h, s, mat = mats.red) => {
+  const tower = (x, z, h, s, mat = mats.pennant) => {
     const tb = [], gy = topAt(x, z);
     watchtower(tb, x, z, h, s);
     for (const q of tb) q.p[1] += gy;
     props.push(...tb);
     flag(x + 1.4 * s, gy + h + 1, z - 1.4 * s, 3, mat);
   };
-  const glowBoxes = [];                              // self-lit paper lanterns (one basic-material mesh)
-  const fires = [];                                  // [x, y, z, scale, smoke?, gate?]
-  const embers = [];                                 // ground-level fires near the fight: the vfx embers rise from them
+  // fires: [x, y, z, scale, smoke?, gate?, wall?]; embers: ground-level fires near the fight (the vfx embers rise from them)
   const burn = (x, z, s, gate) => { fires.push([x, ground(x, z), z, s, s >= 1.3, gate]); if (!gate) embers.push([x, z]); };
   const lamp = (x, z, s) => { fires.push(brazier(props, x, z, s)); embers.push([x, z]); };
+  const armyMat = lit();
 
-  // ---- 蜀軍本陣: palisade round three sides and either side of the gate, gate towers, tents, HQ, standards
-  palisade(props, r, [[-25.5, -118], [-25.5, -157.5], [25.5, -157.5], [25.5, -118]]);
-  palisade(props, r, [[-25, -119.5], [-10.5, -119.5]]);
-  palisade(props, r, [[10.5, -119.5], [25, -119.5]]);
-  tower(-11.8, -119.5, 5.5, 1.3, mats.shuFlag); tower(11.8, -119.5, 5.5, 1.3, mats.shuFlag);
-  for (let z = -150; z <= -127; z += 7.5) for (const sx of [-1, 1]) tent(props, sx * 19.5, z + r.range(-1, 1), Math.PI / 2 + r.range(-0.1, 0.1), r.chance(0.35) ? 0x7a8a66 : 0xb8a684, 4.6, 5.6);
-  { const P = [], gy = ground(0, -152);
-    props.push({ s: [13, 0.9, 8], p: [0, gy + 0.45, -152.5], c: 0x6a5a50 });
-    pagoda(P, 0, gy + 0.9, -152.5, 10.5, 6, 1, 0.9);
-    props.push(...P); }
-  for (const sx of [-1, 1]) { standard(sx * 7, -148.5, 1.3, mats.han, 10, [0, -120]); standard(sx * 21, -154, 1.1, mats.shu, 8.5, [0, -136]); standard(sx * 21, -123, 1.1, mats.shu, 8.5, [0, -136]); }
-  for (const [x, z] of [[-6, -128], [6, -128], [-6, -143], [6, -143], [-15.5, -121.5], [15.5, -121.5]]) lamp(x, z, 0.6);
-  for (let i = 0; i < 10; i++) {                                                 // crates stacked against the palisade
-    const back = r.chance(0.4), x = back ? r.range(-22, 22) : (r.chance(0.5) ? -1 : 1) * 23.6, z = back ? -155.6 : r.range(-150, -124);
-    const L = local(props, x, ground(x, z), z, r.range(0, 3));
-    L(0, 0.45, 0, [0.9, 0.9, 0.9], shade(0x6e5038, r.range(0.8, 1.1))); L(0.3, 1.2, 0.1, [0.7, 0.6, 0.7], shade(0x5a4030, r.range(0.8, 1.1)));
-  }
-  // ---- 漢水渡口: reeds on the banks, the Shu supply train on the south side, wrecks and Wei standards to the north
-  const reeds = [];
-  for (let x = -104; x < 104; x += 0.8) for (const side of [-1, 1]) {        // clumps of 4-8 stalks, thinned at the crossings
-    const inFord = FORDS.some(([a, b]) => x > a + 1 && x < b - 1);
-    if (r.chance(inFord ? 0.85 : 0.2)) continue;
-    const cx = x + r.range(-0.3, 0.3), cz = riverZ(x) + side * r.range(4.6, 8.4), lean = r.range(-0.2, 0.2);
-    for (let k = 0, n = r.int(4, 8); k < n; k++) {
-      const xx = cx + r.range(-0.35, 0.35), zz = cz + r.range(-0.35, 0.35), h = r.range(0.8, 1.6);
-      reeds.push([xx, ground(xx, zz), zz, h, lean + r.range(-0.15, 0.15), r.range(-0.2, 0.2)]);
-    }
-  }
-  for (const [x, z, yaw] of [[-38, -112, 0.4], [-33, -106, 0.2], [36, -110, -0.3], [31, -114, -0.5], [-24, -115, 1.2]]) cart(props, r, x, z, yaw);
-  for (const [x, z, yaw] of [[-33, -64, 2.2], [32, -58, 0.8]]) cart(props, r, x, z, yaw, true);
-  for (const [x, z] of [[-40, -115], [40, -115], [-12, -116], [12, -116]]) standard(x, z, 1.1, mats.shu);
-  for (const [x, z] of [[-41, -52], [41, -54], [-22, -46], [22, -46]]) standard(x, z, 1.1, r.chance(0.2) ? mats.red : mats.wei);
-  // ---- 山道: standards round the basin rim and along the climb, towers + archers on the cliffs over the chokepoint
-  for (let i = 0; i < 14; i++) {
-    const a = (i / 14) * Math.PI * 2 + 0.2, x = Math.sin(a) * 36.5, z = Math.cos(a) * 34.5;
-    if (Math.abs(x) < 16 && Math.abs(z) > 28) continue;                        // keep the road mouths clear
-    standard(x, z, r.range(1, 1.2), r.chance(0.15) ? mats.red : mats.wei);
-  }
-  // (none at the foot of the climb: the title key art stands there, its sky gap above the officers' heads kept clear)
-  for (const [x, z] of [[-16, -42], [16, -42], [19, 47], [-4, 53], [12, 55], [-11, 72], [4, 74]]) standard(x, z, 1.05, mats.wei, 7.6);
-  tower(-10.5, 60, 5.5, 1.3); tower(16, 57, 6, 1.35);
-  const pass = barricade(scene, 2, 61, 0, 11);
-  burn(-1, 61.5, 1.1, 'pass'); burn(6.5, 61, 1.0, 'pass');
-  // ---- plaza before the wall: the siege line of standards, rubble at the wall foot (the castle adds ladders + fires)
-  for (const [x, z, s] of [[-27, 79, 1.05], [2, 80, 1], [-27, 93, 1.1], [3, 91, 1.05]]) standard(x, z, s, mats.wei, 7.3 * s);
-  for (let i = 0; i < 60; i++) {
-    const x = r.range(-28, 4), s = r.range(0.3, 0.9);
-    if (Math.abs(x - GATE_X) < 6) continue;
-    props.push({ s: [s, s * r.range(0.5, 1), s], p: [x, CAMP_H + s * 0.35, WALL_Z - r.range(0.6, 3.5)], r: [r.range(-0.3, 0.3), r.range(0, 3), r.range(-0.3, 0.3)], c: shade(0x5e4e4c, r.range(0.75, 1.15)) });
-  }
-  // ---- 魏軍營寨 courtyard: palisade on the open sides (the ramp leaves through the north-west corner), tents beyond
-  palisade(props, r, [[-43.5, 109.5], [-43.5, 135]]);
-  palisade(props, r, [[-29.5, 141], [6.5, 141]]);
-  for (let z = 113; z < 136; z += 7) tent(props, -52 + r.range(-2, 2), z, Math.PI / 2 + r.range(-0.2, 0.2), r.chance(0.5) ? 0x8a3025 : 0xb09a7c);
-  for (let x = -22; x < 6; x += 8) tent(props, x + r.range(-1.5, 1.5), 148 + r.range(-1, 1), r.range(-0.2, 0.2), r.chance(0.5) ? 0x8a3025 : 0xb09a7c);
-  for (const [x, z] of [[-39, 114], [2, 114], [-39, 136], [2, 136], [-14, 138]]) lamp(x, z, 0.6);
-  for (const [x, z] of [[-41, 111.5], [-41, 138.5], [4, 138.5], [-20, 139]]) standard(x, z, 1.1, mats.wei, 8.5, [-18, 125]);
-  for (let i = 0; i < 6; i++) {                                                  // spear racks against the north palisade
-    const x = r.range(-26, 3), L = local(props, x, ground(x, 140), 140, 0);
-    L(0, 0.9, 0, [2.2, 0.12, 0.12], 0x3a2618); L(0, 0.2, 0, [2.2, 0.12, 0.12], 0x3a2618);
-    for (let k = 0; k < 6; k++) L(-0.9 + k * 0.36, 1.3, -0.1, [0.06, 2.6, 0.06], 0x4a3222, [-0.15, 0, 0]);
-  }
-  // the camp is lived in: supply piles along the palisades, shield racks, the officers' command table under two
-  // standards, a war drum by the east wall, scorched earth (terrain.js) and the fallen (instanced below)
-  for (const [x, z, yaw] of [[2.5, 113, Math.PI / 2], [2.5, 124, Math.PI / 2], [-40.5, 128, -Math.PI / 2], [-6, 138.6, Math.PI], [-26, 138.6, Math.PI]]) supplies(props, r, x, z, yaw, r.int(5, 7));
-  for (const [x, z, yaw] of [[-41.2, 118, Math.PI / 2], [-41.2, 122.5, Math.PI / 2], [-14, 139.3, Math.PI], [3.4, 131, -Math.PI / 2]]) shieldRack(props, r, x, z, yaw);
-  commandTable(props, -4, 130.5, 0.2);
-  standard(-7.5, 134.5, 1.0, mats.xiahou, 7.5, [-4, 124]); standard(-0.5, 134.5, 1.0, mats.wei, 7.5, [-4, 124]);
-  lamp(-2.2, 128.3, 0.55); lamp(-30, 116, 0.55);                                 // (the table + this brazier: a map CARVE)
-  supplies(props, r, -33, 113, 0.1, 6); supplies(props, r, -16, 138.6, Math.PI, 6); supplies(props, r, 0.5, 138.6, Math.PI, 5);
-  drum(props, 1.5, 119, -Math.PI / 2); drum(props, -24, 137.5, 0.15);
-  // watchtowers on the camp shelf beyond the flank wall (the old concept view: the sun between the corner tower and them)
-  tower(35, 114, 6.5, 1.5); tower(51, 125, 8, 1.55); tower(60, 103, 6, 1.45);
-  // ---- ramp: torches on both sides, a flag at each bend, the summit barricade
-  const rampPts = [[-30, 133], [-41, 145], [-45, 159], [-33, 171], [-17, 176.5], [-6, 180]];
-  for (let i = 0; i < rampPts.length - 1; i++) {
-    const [ax, az] = rampPts[i], [bx, bz] = rampPts[i + 1], L = Math.hypot(bx - ax, bz - az), nx = (bz - az) / L, nz = -(bx - ax) / L;
-    for (let d = 3; d < L; d += 8) for (const sd of [-1, 1]) {
-      const x = ax + (bx - ax) * d / L + nx * sd * 6.8, z = az + (bz - az) * d / L + nz * sd * 6.8;
-      if (inAt(x, z) > -0.5 || inAt(x, z) < -3) continue;                     // on the verge, not in the rock
-      fires.push(brazier(props, x, z, 0.45));
-    }
-    if (i) flag(ax + nx * 7.5, ground(ax, az), az + nz * 7.5, 3.4, mats.red);
-  }
-  const summitGate = barricade(scene, -20, 176, Math.PI / 2, 9);
-  burn(-20, 172.5, 1.0, 'summit'); burn(-20.5, 179.5, 1.1, 'summit');
-  // ---- 定軍山頂: 夏侯淵's pavilion on a stone platform, war drums, the great 夏侯 banner, the beacon, rim standards
-  { const P = [], gy = ground(4, 209);
-    props.push({ s: [17, 1.2, 11], p: [4, gy + 0.6, 209], c: 0x6a5a50 }, { s: [17.2, 0.1, 0.16], p: [4, gy + 1.2, 203.5], c: 0x9a8a78 });
-    for (let k = 0; k < 3; k++) {                                              // stepped stair, pale worn nosing
-      const top = 0.4 * (k + 1), d = 1.35 - k * 0.45, z = 203.5 - d / 2 - 0.01;
-      props.push({ s: [6.2 - k * 0.2, top, d], p: [4, gy + top / 2, z - 0.001 * k], c: shade(0x5e4e46, 1 + k * 0.04) }, { s: [6.2 - k * 0.2, 0.06, 0.14], p: [4, gy + top, 203.5 - d + 0.07], c: 0x9a8a78 });
-    }
-    for (const [x0, x1] of [[-4.4, 0.8], [7.2, 12.4]]) {                     // red lacquer balustrade either side of the stair
-      props.push({ s: [x1 - x0, 0.12, 0.12], p: [(x0 + x1) / 2, gy + 1.95, 203.35], c: 0x8a2a1c }, { s: [x1 - x0, 0.08, 0.08], p: [(x0 + x1) / 2, gy + 1.5, 203.35], c: 0x6a2016 });
-      for (let x = x0; x <= x1 + 0.01; x += (x1 - x0) / 4) props.push({ s: [0.18, 0.85, 0.18], p: [x, gy + 1.62, 203.35], c: 0x7a2418 }, { s: [0.24, 0.12, 0.24], p: [x, gy + 2.08, 203.35], c: 0xa07c34 });
-    }
-    for (const x of [0.2, 7.8]) {                                              // stone lanterns at the stair foot, a small flame inside
-      const lz = 202.45;
-      props.push({ s: [0.7, 0.3, 0.7], p: [x, gy + 0.15, lz], c: 0x6a5a50 }, { s: [0.3, 0.8, 0.3], p: [x, gy + 0.7, lz], c: 0x6a5a50 },
-        { s: [0.62, 0.08, 0.62], p: [x, gy + 1.12, lz], c: 0x5a4c44 }, { s: [0.9, 0.16, 0.9], p: [x, gy + 1.62, lz], c: 0x5a4c44 }, { s: [0.3, 0.2, 0.3], p: [x, gy + 1.8, lz], c: 0x6a5a50 });
-      for (const [dx, dz] of [[-0.24, -0.24], [0.24, -0.24], [-0.24, 0.24], [0.24, 0.24]]) props.push({ s: [0.1, 0.42, 0.1], p: [x + dx, gy + 1.35, lz + dz], c: 0x5a4c44 });
-      fires.push([x, gy + 1.16, lz, 0.2, false]);
-    }
-    pagoda(P, 4, gy + 1.2, 209, 13, 8, 2, 1);
-    props.push(...P);
-    // paper lanterns under both eaves: self-lit, they carry the backlit facade (the sun sits straight behind it)
-    for (const lx of [-4.6, -1.6, 1.6, 4.6]) paperLantern(glowBoxes, 4 + lx, gy + 4.05, 205.3, 1.15);
-    for (const lx of [-2.6, 0, 2.6]) paperLantern(glowBoxes, 4 + lx, gy + 7.2, 206.4, 0.95);
-    // war drums on the terrace either side of the stair, lit by the step braziers (on the stone: nobody walks there)
-    drum(props, -2.5, 205.4, -Math.PI / 2 + 0.35, gy + 1.2); drum(props, 10.5, 205.4, Math.PI / 2 - 0.35, gy + 1.2); }   // side-on: frame to the lens
-  { const x = -6, z = 213, gy = ground(x, z), P = 20;
-    poles.push({ s: [0.4, P, 0.4], p: [x, gy + P / 2, z], c: 0x2e1d15 }, { s: [5.6, 0.3, 0.3], p: [x + 2.6, gy + P - 0.5, z], c: 0x2e1d15 }, { s: [0.3, 1.4, 0.3], p: [x, gy + P + 0.7, z], c: 0xc9a040 });
-    addCloth(mats.xiahou, 5, 10, 'hang', x + 0.2, gy + P - 0.7, z, 0.1); }
-  fires.push([15, beaconTower(props, r, 15, 215), 215, 3.2, true]);          // the beacon: its smoke marks the goal from the valley
-  // braziers flanking the pavilion steps (they light its backlit front), supplies and shield racks by the pavilion,
-  // a command table on the parade ground's edge, and a jagged crest of voxel crags round the back of the rim so the
-  // summit reads as a mountain top against the sky
-  // (the pavilion terrace is a map CARVE; nothing else stands on the walkable parade ground but thin standards)
-  for (const [x, z] of [[-2.5, 203], [10.5, 203]]) lamp(x, z, 0.85);
-  for (let i = 0; i < 34; i++) {
-    const a = -2.0 + (i / 33) * 4.0 + r.range(-0.04, 0.04), rr = r.range(27.5, 32), x = 2 + Math.sin(a) * rr, z = 194 + Math.cos(a) * rr;
-    if (inAt(x, z) > -1.5 || Math.hypot(x + 6, z - 227) < 9 || Math.hypot(x - 20, z - 229) < 9) continue;
-    const gy = topAt(x, z), h = r.range(2, 6.5), w = r.range(1.6, 3.2);
-    props.push({ s: [w, h, w * r.range(0.7, 1.2)], p: [x, gy + h / 2 - 0.3, z], r: [r.range(-0.12, 0.12), r.range(0, 3), r.range(-0.12, 0.12)], c: shade(0x6a5448, r.range(0.75, 1.05)) });
-    props.push({ s: [w * 0.55, h * 0.5, w * 0.55], p: [x + r.range(-0.4, 0.4), gy + h * 1.1 - 0.4, z + r.range(-0.4, 0.4)], r: [r.range(-0.2, 0.2), r.range(0, 3), r.range(-0.2, 0.2)], c: shade(0x76604f, r.range(0.8, 1.05)) });
-  }
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2 + 0.3, x = 2 + Math.sin(a) * 23.5, z = 194 + Math.cos(a) * 23.5;
-    if (Math.hypot(x + 10, z - 178) < 10) continue;                            // the ramp's arrival
-    standard(x, z, 1.15, r.chance(0.3) ? mats.red : mats.wei, 8.5, [2, 194]);
-  }
-  palisade(props, r, [[-16, 214], [-6, 219.5], [10, 220], [22, 212]]);
-  for (const [x, z] of [[-8, 196], [14, 194], [0, 186]]) lamp(x, z, 0.7);
-
-  // ---- burning wrecks on the field (scorch marks: terrain.js)
-  for (const [x, z, s] of fieldFires) {
-    burn(x, z, s);
-    const yaw = r.range(0, 3), gy = ground(x, z);
-    props.push({ s: [1.6 * s, 0.14, 2.6 * s], p: [x + 0.4, gy + 0.55, z], r: [0.35, yaw, 0.2], c: 0x2a1a10 });
-    for (const o of [-1, 1]) props.push({ s: [0.16, 1.1 * s, 1.1 * s], p: [x + Math.cos(yaw) * o * 0.9 * s, gy + 0.5 * s, z - Math.sin(yaw) * o * 0.9 * s], r: [0, yaw, 0.4 * o], c: 0x241610 });
-  }
-  // arrow volleys stuck in the ground, all low so nothing blocks the fight
-  for (let c = 0; c < 40; c++) {
-    const cx = r.range(-40, 40), cz = r.range(-115, 200);
-    if (inAt(cx, cz) < 2 || routeDist(cx, cz) < 2) continue;
-    const tilt = r.range(0.2, 0.5), dir = r.range(-0.4, 0.4) + 2.5;
-    for (let k = 0, n = r.int(5, 12); k < n; k++) {
-      const x = cx + r.range(-1.6, 1.6), z = cz + r.range(-1.6, 1.6), gy = ground(x, z);
-      props.push({ s: [0.035, 0.85, 0.035], p: [x, gy + 0.3, z], r: [tilt, dir, 0], c: 0x4a3524 }, { s: [0.09, 0.14, 0.02], p: [x + Math.sin(dir) * Math.sin(tilt) * 0.4, gy + 0.3 + Math.cos(tilt) * 0.4, z + Math.cos(dir) * Math.sin(tilt) * 0.4], r: [tilt, dir, 0], c: 0xd8cfc0 });
-    }
-  }
-
-  // the fallen: dropped shields (red 魏 / sand 蜀 rims), broken spears and helmets flat in the dirt, never upright
-  for (let c = 0, n = 0; c < 400 && n < 120; c++) {
-    const x = r.range(-44, 44), z = r.range(-118, 215);
-    if (inAt(x, z) < 1 || routeDist(x, z) < 1.5 || Math.abs(z - riverZ(x)) < 5.5) continue;
-    n++;
-    const gy = ground(x, z), yaw = r.range(0, 6.28), L = local(props, x, gy, z, yaw), kind = r.int(0, 2);
-    if (kind === 0) {
-      const face = r.chance(0.6) ? 0x6e2418 : 0x9a8058;
-      L(0, 0.05, 0, [0.9, 0.08, 0.7], shade(face, r.range(0.8, 1.05)), [r.range(-0.2, 0.2), 0, r.range(-0.1, 0.1)]);
-      L(0, 0.05, 0, [0.7, 0.085, 0.9], shade(face, r.range(0.8, 1.05)), [r.range(-0.2, 0.2), 0, r.range(-0.1, 0.1)]);
-      L(0, 0.1, 0, [0.2, 0.06, 0.2], 0x8a7a50);                                // boss
-    } else if (kind === 1) {
-      const len = r.range(1.2, 2.6);
-      L(0, 0.05, 0, [0.06, 0.06, len], 0x6b4a2e, [0, 0, 0]);                                  // sun-bleached shaft, not a black bar
-      L(0, 0.05, len / 2 + 0.12, [0.1, 0.04, 0.26], 0xa8adb2);                 // spearhead catches the sun
-    } else L(0, 0.14, 0, [0.34, 0.26, 0.38], shade(0x3a3434, r.range(0.8, 1.2)), [r.range(-0.6, 0.6), 0, r.range(-0.6, 0.6)]);
-  }
-  // torch posts just outside the walk edge along the ford and the pass: small flames lining the route into the dusk
-  for (let i = 0; i < ROUTE.length - 1; i++) {
-    const [ax, az] = ROUTE[i], [bx, bz] = ROUTE[i + 1];
-    if (az > 70 || az < -118) continue;
-    const len = Math.hypot(bx - ax, bz - az), nx = (bz - az) / len, nz = -(bx - ax) / len;
-    for (let d = 4; d < len; d += 13) for (const sd of [-1, 1]) {
-      for (let off = 4; off < 60; off += 1) {                                    // walk outward to the edge
-        const x = ax + (bx - ax) * d / len + nx * sd * off, z = az + (bz - az) * d / len + nz * sd * off, f = inAt(x, z);
-        if (f > -0.6) continue;
-        if (f > -2.5 && Math.abs(z - riverZ(x)) > 7) {
-          const gy = topAt(x, z);
-          props.push({ s: [0.18, 2.6, 0.18], p: [x, gy + 1.3, z], c: 0x3a2618 }, { s: [0.5, 0.3, 0.5], p: [x, gy + 2.7, z], c: 0x2a2624 });
-          fires.push([x, gy + 2.85, z, 0.4, false]);
-        }
-        break;
-      }
-    }
-  }
-
-  // ---- the castle's banners (castle frame → + CAMP_H): 夏侯 drape beside the gate, red flags along the wall walk
-  const wy = CAMP_H + castle.H;
-  addCloth(mats.xiahou, 6, 9.5, 'drape', GATE_X - 18 + 3, wy - 0.3, WALL_Z - 0.35, Math.PI);   // faces the plaza (-Z)
-  poles.push({ s: [7.1, 0.35, 0.35], p: [GATE_X - 18, wy - 0.15, WALL_Z - 0.4], c: 0x3b2a1e });
-  for (let x = castle.x0 + 4; x < castle.x1 - 4; x += 16) if (Math.abs(x - GATE_X) > 12) flag(x + r.range(-2, 2), wy, WALL_Z + 0.8, 3.2, mats.red);
-  flag(GATE_X - 7, wy + 0.6, WALL_Z + 1, 9, mats.red);
-  flag(GATE_X + 7, wy + 0.6, WALL_Z + 1, 9, mats.red);
-  flag(castle.cornerX + 4, CAMP_H + castle.towerH, WALL_Z - 0.5, 4, mats.red);
-
-  // ---- reserve armies off the walkable ground (instanced, idle bob): 蜀 behind the 本陣 and on the ford hills, 魏 on
-  // the camp shelf, archers lining the cliffs over the chokepoint, a guard on the summit's back shoulder. One instanced
-  // mesh per formation, so the renderer frustum-culls each block (one mesh spanning the map was always drawn, twice)
-  const troops = [];                                 // [side, [{ x, y, z, yaw, ph }]]
+  // reserve armies off the walkable ground (instanced, idle bob). One instanced mesh per formation, so the renderer
+  // frustum-culls each block (one mesh spanning the map was always drawn, twice)
   const formation = (side, cx, cz, face, cols, rows, gap = 1.3) => {
     const list = []; troops.push([side, list]);
     for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
@@ -730,35 +557,9 @@ export function buildDressing(scene, { castle, fieldFires }) {
       if (inAt(x, z) > -2) continue;                                            // never on ground the fight can reach
       list.push({ x, y: topAt(x, z), z, yaw: face + r.range(-0.2, 0.2), ph: r.range(0, 6.28) });
     }
-    if (r.chance(0.6)) standard(cx, cz, r.range(1.0, 1.3), side === 'shu' ? mats.shu : mats.wei, undefined, [cx + Math.sin(face) * 9, cz + Math.cos(face) * 9]);
+    if (r.chance(0.6)) standard(cx, cz, r.range(1.0, 1.3), side === 'ally' ? mats.ally : mats.foe, undefined, [cx + Math.sin(face) * 9, cz + Math.cos(face) * 9]);
   };
-  for (const [x, z, f] of [[-32, -170, 0], [0, -171, 0], [32, -170, 0], [-58, -138, 0.9], [58, -136, -0.9], [-60, -100, 1.3], [60, -96, -1.3]]) formation('shu', x, z, f, r.int(10, 16), r.int(5, 8));
-  for (const [x, z, f] of [[30, 124, -1.4], [44, 136, -1.6], [42, 106, -1.2], [60, 118, -1.5], [-58, 124, 1.5], [-6, 227, Math.PI], [20, 229, Math.PI]]) formation('wei', x, z, f, r.int(9, 14), r.int(4, 7));
-  const rims = [[], []];
-  troops.push(['wei', rims[0]], ['wei', rims[1]]);
-  for (let z = 44; z < 78; z += 1.6) for (const x of [-15 - (z - 44) * 0.1, 21 - (z - 44) * 0.15]) {   // archers on both rims, facing into the pass
-    const ax = x + r.range(-1.2, 1.2);
-    if (inAt(ax, z) > -3) continue;
-    rims[x < 0 ? 0 : 1].push({ x: ax, y: topAt(ax, z), z, yaw: (x < 0 ? Math.PI / 2 : -Math.PI / 2) + r.range(-0.3, 0.3), ph: r.range(0, 6.28) });
-  }
-  const figGeo = { shu: figureGeometry(0x3c7a3a, 0x3a3428), wei: figureGeometry() }, armyMat = lit();
-  // the fallen: bodies sprawled in the courtyard, the plaza, on the summit and around the field wrecks (one instanced
-  // mesh; laid flat, never an obstacle to the eye)
-  { const spots = [], zones = [[-40, 3, 112, 138, 16], [-27, 3, 78, 95, 8], [-20, 24, 180, 210, 14], [-40, 40, -110, 60, 22]];
-    for (const [x0, x1, z0, z1, n] of zones) for (let k = 0, c = 0; k < 200 && c < n; k++) {
-      const x = r.range(x0, x1), z = r.range(z0, z1);
-      if (inAt(x, z) < 1 || routeDist(x, z) < 2 || Math.abs(z - riverZ(x)) < 6) continue;
-      c++; spots.push([x, z, r.range(0, 6.28), r.chance(0.5) ? -1 : 1]);
-    }
-    const dead = new THREE.InstancedMesh(fallenGeometry(), armyMat, spots.length), m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(0, 0, 0, 'YXZ'), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
-    spots.forEach(([x, z, yaw], i) => dead.setMatrixAt(i, m.compose(p.set(x, topAt(x, z) - 0.02, z), q.setFromEuler(e.set(r.range(-0.06, 0.06), yaw, r.range(-0.08, 0.08))), one)));
-    dead.receiveShadow = true; dead.name = 'fallen';
-    scene.add(dead); }
-  const armies = troops.filter(([, list]) => list.length).map(([k, list]) => {
-    const m = new THREE.InstancedMesh(figGeo[k], armyMat, list.length);
-    m.name = 'reserve-' + k; scene.add(m);
-    return [m, list];
-  });
+  let armies = null;
   const am = new THREE.Matrix4(), aq = new THREE.Quaternion(), ap = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
   const poseArmy = (t) => {
     for (const [m, list] of armies) {
@@ -766,108 +567,243 @@ export function buildDressing(scene, { castle, fieldFires }) {
       m.instanceMatrix.needsUpdate = true;
     }
   };
-  poseArmy(0);
-  for (const [m] of armies) { m.computeBoundingSphere(); m.boundingSphere.radius += 2; }   // + the figure's height and bob
-
-  // reeds (instanced, static): tapered straw-gold stalks with a brown seed head, lit like the grass cards (normal pinned
-  // up: never a black backlit stake) with a gold glow toward the low sun; swaying a little. Stalks near the lens or on
-  // the hero line duck to 30 % and thin out (nothing hides the fight, the tufts' rule)
-  const reedMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
-  reedMat.onBeforeCompile = (sh) => {
-    sh.uniforms.uFocus = FOCUS; sh.uniforms.uTime = GRASS_TIME; sh.uniforms.uSunW = { value: SUN_DIR };
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform vec3 uFocus; uniform float uTime; varying float vReedY;').replace('#include <begin_vertex>', `#include <begin_vertex>
-      vec2 rA = cameraPosition.xz, rD = uFocus.xz - rA, rP = instanceMatrix[3].xz;
-      float rT = dot(rP - rA, rD) / max(dot(rD, rD), 1e-4);
-      float rClear = rT > 1.0 ? 1.0 : smoothstep(1.4, 3.0, distance(rP, rA + rD * max(rT, 0.0)));
-      rClear = min(rClear, smoothstep(2.0, 5.0, distance(rP, rA)));
-      vReedY = transformed.y + 0.5;
-      transformed.y = vReedY * mix(0.3, 1.0, rClear) - 0.5;
-      transformed.xz *= mix(0.4, 1.0, rClear);
-      transformed.xz += vec2(0.75, 0.55) * (sin(uTime * 1.7 + rP.x * 0.4 + rP.y * 0.3) * 0.5 + 0.5) * 2.2 * vReedY * vReedY;`);
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uSunW; varying float vReedY;')
-      .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nnormal = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);')
-      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-        float rBack = pow(max(dot(normalize(-vViewPosition), normalize((viewMatrix * vec4(uSunW, 0.0)).xyz)), 0.0), 3.0);
-        totalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.55, 0.2) * (0.03 + 0.2 * rBack * vReedY);`);
-  };
-  // unit stalk (y -0.5 … 0.5): three tapering sections, then a slim seed head
-  const reedGeo = boxesGeometry([
-    { s: [1, 0.5, 1], p: [0, -0.25, 0], c: 0x9a8454, skip: [3] }, { s: [0.55, 0.4, 0.55], p: [0, 0.2, 0], c: 0xb09662, skip: [3] },
-    { s: [1.15, 0.13, 1.15], p: [0, 0.455, 0], c: 0x5e3e22, skip: [3] },
-  ]);
-  const reedM = new THREE.InstancedMesh(reedGeo, reedMat, reeds.length);
-  { const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), s = new THREE.Vector3(), c = new THREE.Color();
+  /** Troop meshes + the reed mesh (its colour draws sit here in the layout rng stream: aftermath() calls it). */
+  function meshArmies() {
+    if (armies) return;
+    const figGeo = { ally: figureGeometry(PAL.ally.band, 0x3a3428), foe: figureGeometry(PAL.foe.band) };
+    armies = troops.filter(([, list]) => list.length).map(([k, list]) => {
+      const m = new THREE.InstancedMesh(figGeo[k], armyMat, list.length);
+      m.name = 'reserve-' + k; root.add(m);
+      return [m, list];
+    });
+    poseArmy(0);
+    for (const [m] of armies) { m.computeBoundingSphere(); m.boundingSphere.radius += 2; }   // + the figure's height and bob
+    if (!reeds.length) return;
+    // reeds (instanced, static): tapered straw-gold stalks with a brown seed head, lit like the grass cards (normal pinned
+    // up: never a black backlit stake) with a gold glow toward the low sun; swaying a little. Stalks near the lens or on
+    // the hero line duck to 30 % and thin out (nothing hides the fight, the tufts' rule)
+    const reedMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
+    reedMat.onBeforeCompile = (sh) => {
+      sh.uniforms.uFocus = FOCUS; sh.uniforms.uTime = GRASS_TIME; sh.uniforms.uSunW = { value: SUN_DIR };
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform vec3 uFocus; uniform float uTime; varying float vReedY;').replace('#include <begin_vertex>', `#include <begin_vertex>
+        vec2 rA = cameraPosition.xz, rD = uFocus.xz - rA, rP = instanceMatrix[3].xz;
+        float rT = dot(rP - rA, rD) / max(dot(rD, rD), 1e-4);
+        float rClear = rT > 1.0 ? 1.0 : smoothstep(1.4, 3.0, distance(rP, rA + rD * max(rT, 0.0)));
+        rClear = min(rClear, smoothstep(2.0, 5.0, distance(rP, rA)));
+        vReedY = transformed.y + 0.5;
+        transformed.y = vReedY * mix(0.3, 1.0, rClear) - 0.5;
+        transformed.xz *= mix(0.4, 1.0, rClear);
+        transformed.xz += vec2(0.75, 0.55) * (sin(uTime * 1.7 + rP.x * 0.4 + rP.y * 0.3) * 0.5 + 0.5) * 2.2 * vReedY * vReedY;`);
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uSunW; varying float vReedY;')
+        .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nnormal = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);')
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+          float rBack = pow(max(dot(normalize(-vViewPosition), normalize((viewMatrix * vec4(uSunW, 0.0)).xyz)), 0.0), 3.0);
+          totalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.55, 0.2) * (0.03 + 0.2 * rBack * vReedY);`);
+    };
+    // unit stalk (y -0.5 … 0.5): three tapering sections, then a slim seed head
+    const reedGeo = boxesGeometry([
+      { s: [1, 0.5, 1], p: [0, -0.25, 0], c: 0x9a8454, skip: [3] }, { s: [0.55, 0.4, 0.55], p: [0, 0.2, 0], c: 0xb09662, skip: [3] },
+      { s: [1.15, 0.13, 1.15], p: [0, 0.455, 0], c: 0x5e3e22, skip: [3] },
+    ]);
+    const reedM = new THREE.InstancedMesh(reedGeo, reedMat, reeds.length);
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), s = new THREE.Vector3(), c = new THREE.Color();
     reeds.forEach(([x, y, z, h, tx, tz], i) => {
       reedM.setMatrixAt(i, m.compose(p.set(x, y + h / 2 - 0.1, z), q.setFromEuler(e.set(tx, 0, tz)), s.set(0.055, h, 0.055)));
       reedM.setColorAt(i, c.set(r.chance(0.7) ? 0xffffff : 0xc8d0a0).multiplyScalar(r.range(0.8, 1.05)));   // straw gold, a few still green
-    }); }
-  reedM.name = 'reeds';
-  scene.add(reedM);
-
-  // fallen standards lying in the dirt (flat, never occlude)
-  const fallenTex = bannerTexture('魏', { bg: '#a0583c', fg: '#4a2418', border: '#7a3a26', seed: 11 });   // trampled, sun-faded, dusty
-  const fallenMat = new THREE.MeshStandardMaterial({ map: fallenTex, emissiveMap: fallenTex, emissive: 0xffffff, emissiveIntensity: 0.12, side: THREE.DoubleSide, alphaTest: 0.5, roughness: 0.95 });
-  for (let i = 0, n = 0; i < 60 && n < 10; i++) {
-    const x = r.range(-40, 40), z = r.range(-110, 200), yaw = r.range(0, 6.28);
-    if (inAt(x, z) < 3 || routeDist(x, z) < 6) continue;             // off the road: a 4 m orange slab by the spawn filled the frame
-    n++;
-    const gy = ground(x, z), c = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 4.3, 3, 4), fallenMat);
-    c.rotation.set(-Math.PI / 2, 0, yaw); c.position.set(x, gy + 0.06, z); c.receiveShadow = true;
-    scene.add(c);
-    poles.push({ s: [0.2, 0.2, 6], p: [x + Math.cos(yaw) * 1.6, gy + 0.12, z - Math.sin(yaw) * 1.6], r: [0, yaw + 0.15, 0], c: 0x3b2a1e });
+    });
+    reedM.name = 'reeds';
+    root.add(reedM);
   }
-  // drifting dust banks (soft sprites): the wall foot, the ford, the basin — backlit haze in the middle distance
-  const dc = document.createElement('canvas'); dc.width = dc.height = 64;
-  const dg = dc.getContext('2d'), grd = dg.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(0.5, 'rgba(255,255,255,0.45)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
-  dg.fillStyle = grd; dg.fillRect(0, 0, 64, 64);
-  const dustTex = new THREE.CanvasTexture(dc);
   const dusts = [];
-  for (let i = 0; i < 34; i++) {
-    const wall = i < 8, x = wall ? r.range(-40, 10) : r.range(-50, 50), z = wall ? WALL_Z - r.range(3, 12) : r.range(-120, 40);
-    // wall-foot banks kept thin: the stone coursing, ladders and banners must read through them
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: dustTex, color: wall ? 0xc89c80 : 0xb08c7c, transparent: true, opacity: wall ? r.range(0.035, 0.07) : r.range(0.06, 0.13), depthWrite: false }));
-    const w = r.range(14, 26);
-    sp.scale.set(w, w * r.range(0.3, 0.45), 1);
-    sp.position.set(x, topAt(x, z) + w * 0.12, z);
-    sp.userData = { x, ph: r.range(0, 6.28), sp: r.range(0.2, 0.5) };
-    scene.add(sp); dusts.push(sp);
-  }
+
+  const k = {
+    r, def, army: A, castle, mats, banner, props, poles, glow: glowBoxes, sites, shade,
+    ground, topAt, inAt, routeNear, routeDist, waterD,
+    /** Box pusher into props in a local frame (x across, z along yaw) at (x0, y0, z0): L(lx, ly, lz, size, colour, rot). */
+    local: (x0, y0, z0, yaw) => local(props, x0, y0, z0, yaw),
+    cloth: addCloth, standard, flag, tower, burn, lamp,
+    fire: (x, y, z, s, smoke = s >= 1.3, gate = null, wall = false) => { fires.push([x, y, z, s, smoke, gate, wall]); },
+    brazier: (x, z, s) => brazier(props, x, z, s),
+    palisade: (pts) => palisade(props, r, pts),
+    tent: (x, z, yaw, col, w, d) => tent(props, x, z, yaw, col, w, d),
+    cart: (x, z, yaw, burnt) => cart(props, r, x, z, yaw, burnt),
+    supplies: (x, z, yaw, n) => supplies(props, r, x, z, yaw, n),
+    shieldRack: (x, z, yaw) => shieldRack(props, r, x, z, yaw),
+    commandTable: (x, z, yaw) => commandTable(props, x, z, yaw),
+    drum: (x, z, yaw, y) => drum(props, x, z, yaw, y),
+    beaconTower: (x, z) => beaconTower(props, r, x, z),
+    pagoda: (x, y, z, w, d, tiers, s) => pagoda(props, x, y, z, w, d, tiers, s),
+    lantern: (x, y, z, s) => paperLantern(glowBoxes, x, y, z, s),
+    /** The barricade of gate `id` (def.gates[id].at = [x, z, yaw, half width]): collapses and chars as it opens. */
+    barricade(id) { const [x, z, yaw, half] = GATES[id].at; gates[id] = barricade(root, x, z, yaw, half); },
+    formation,
+    troops: (side, list) => { troops.push([side, list]); },
+    /** Reed clumps along both banks of the water, thinned at the fords. */
+    reeds() {
+      if (!WATER) return;
+      const W = WATER, a0 = W.X ? TERRAIN.x0 : TERRAIN.z0, a1 = W.X ? TERRAIN.x1 : TERRAIN.z1;
+      for (let x = a0 + 8; x < a1 - 8; x += 0.8) for (const side of [-1, 1]) {        // clumps of 4-8 stalks
+        const inFord = W.fords.some(([a, b]) => x > a + 1 && x < b - 1);
+        if (W.fords.some(([a, b, d]) => d < 0 && x > a - 2.5 && x < b + 2.5)) continue;   // a bridge deck: none on it
+        if (r.chance(inFord ? 0.85 : 0.2)) continue;
+        const cx = x + r.range(-0.3, 0.3), cz = W.c(x) + side * r.range(HW + 0.1, HW + 3.9), lean = r.range(-0.2, 0.2);
+        for (let n = 0, N = r.int(4, 8); n < N; n++) {
+          const a = cx + r.range(-0.35, 0.35), p = cz + r.range(-0.35, 0.35), h = r.range(0.8, 1.6), xx = W.X ? a : p, zz = W.X ? p : a;
+          reeds.push([xx, ground(xx, zz), zz, h, lean + r.range(-0.15, 0.15), r.range(-0.2, 0.2)]);
+        }
+      }
+    },
+    /** Burning wrecks at def.fires [x, z, scale] (their ground is scorched: terrain.js). */
+    wrecks() {
+      for (const [x, z, s] of def.fires || []) {
+        burn(x, z, s);
+        const yaw = r.range(0, 3), gy = ground(x, z);
+        props.push({ s: [1.6 * s, 0.14, 2.6 * s], p: [x + 0.4, gy + 0.55, z], r: [0.35, yaw, 0.2], c: 0x2a1a10 });
+        for (const o of [-1, 1]) props.push({ s: [0.16, 1.1 * s, 1.1 * s], p: [x + Math.cos(yaw) * o * 0.9 * s, gy + 0.5 * s, z - Math.sin(yaw) * o * 0.9 * s], r: [0, yaw, 0.4 * o], c: 0x241610 });
+      }
+    },
+    /** Arrow volleys stuck in the ground over area [x0, z0, x1, z1] (n tries), all low so nothing blocks the fight. */
+    arrows([x0, z0, x1, z1], n = 40) {
+      for (let c = 0; c < n; c++) {
+        const cx = r.range(x0, x1), cz = r.range(z0, z1);
+        if (inAt(cx, cz) < 2 || routeDist(cx, cz) < 2) continue;
+        const tilt = r.range(0.2, 0.5), dir = r.range(-0.4, 0.4) + 2.5;
+        for (let q = 0, N = r.int(5, 12); q < N; q++) {
+          const x = cx + r.range(-1.6, 1.6), z = cz + r.range(-1.6, 1.6), gy = ground(x, z);
+          props.push({ s: [0.035, 0.85, 0.035], p: [x, gy + 0.3, z], r: [tilt, dir, 0], c: 0x4a3524 }, { s: [0.09, 0.14, 0.02], p: [x + Math.sin(dir) * Math.sin(tilt) * 0.4, gy + 0.3 + Math.cos(tilt) * 0.4, z + Math.cos(dir) * Math.sin(tilt) * 0.4], r: [tilt, dir, 0], c: 0xd8cfc0 });
+        }
+      }
+    },
+    /** The fallen's gear over area [x0, z0, x1, z1]: dropped shields, broken spears and helmets flat in the dirt, never
+     *  upright (n pieces, at most `tries` draws). */
+    debris([x0, z0, x1, z1], n = 120, tries = 400) {
+      for (let c = 0, got = 0; c < tries && got < n; c++) {
+        const x = r.range(x0, x1), z = r.range(z0, z1);
+        if (inAt(x, z) < 1 || routeDist(x, z) < 1.5 || waterD(x, z) < HW + 1) continue;
+        got++;
+        const gy = ground(x, z), yaw = r.range(0, 6.28), L = local(props, x, gy, z, yaw), kind = r.int(0, 2);
+        if (kind === 0) {
+          const face = r.chance(0.6) ? 0x6e2418 : 0x9a8058;
+          L(0, 0.05, 0, [0.9, 0.08, 0.7], shade(face, r.range(0.8, 1.05)), [r.range(-0.2, 0.2), 0, r.range(-0.1, 0.1)]);
+          L(0, 0.05, 0, [0.7, 0.085, 0.9], shade(face, r.range(0.8, 1.05)), [r.range(-0.2, 0.2), 0, r.range(-0.1, 0.1)]);
+          L(0, 0.1, 0, [0.2, 0.06, 0.2], 0x8a7a50);                                // boss
+        } else if (kind === 1) {
+          const len = r.range(1.2, 2.6);
+          L(0, 0.05, 0, [0.06, 0.06, len], 0x6b4a2e, [0, 0, 0]);                  // sun-bleached shaft, not a black bar
+          L(0, 0.05, len / 2 + 0.12, [0.1, 0.04, 0.26], 0xa8adb2);                 // spearhead catches the sun
+        } else L(0, 0.14, 0, [0.34, 0.26, 0.38], shade(0x3a3434, r.range(0.8, 1.2)), [r.range(-0.6, 0.6), 0, r.range(-0.6, 0.6)]);
+      }
+    },
+    /** Torch posts just outside the walk edge along the road segments starting within z0 … z1. */
+    torchPosts(z0, z1) {
+      for (let i = 0; i < ROUTE.length - 1; i++) {
+        const [ax, az] = ROUTE[i], [bx, bz] = ROUTE[i + 1];
+        if (az > z1 || az < z0) continue;
+        const len = Math.hypot(bx - ax, bz - az), nx = (bz - az) / len, nz = -(bx - ax) / len;
+        for (let d = 4; d < len; d += 13) for (const sd of [-1, 1]) {
+          for (let off = 4; off < 60; off += 1) {                                  // walk outward to the edge
+            const x = ax + (bx - ax) * d / len + nx * sd * off, z = az + (bz - az) * d / len + nz * sd * off, f = inAt(x, z);
+            if (f > -0.6) continue;
+            if (f > -2.5 && waterD(x, z) > HW + 2.5) {
+              const gy = topAt(x, z);
+              props.push({ s: [0.18, 2.6, 0.18], p: [x, gy + 1.3, z], c: 0x3a2618 }, { s: [0.5, 0.3, 0.5], p: [x, gy + 2.7, z], c: 0x2a2624 });
+              fires.push([x, gy + 2.85, z, 0.4, false]);
+            }
+            break;
+          }
+        }
+      }
+    },
+    /** Far-off fires [[x, z], …] off the route (scale s): warm points in the hazy band, a battlefield ablaze to the horizon. */
+    farFires(list, s = 3.2) { farFires.push(...list.map(([x, z]) => [x, topAt(x, z), z, s])); },
+    /**
+     * The battle's aftermath, after every formation: fallen bodies over zones [[x0, x1, z0, z1, n], …] (one instanced
+     * mesh, laid flat), the troop and reed meshes, `standards` [n, x0, z0, x1, z1] trampled foe standards in the dirt off
+     * the road, and `dust` { n, area: [x0, z0, x1, z1], wall: [n, x0, x1, z] } drifting dust banks (soft sprites; the
+     * first wall[0] thin ones at the foot of a wall facing -Z at z).
+     */
+    aftermath({ fallen = [], standards, dust } = {}) {
+      const spots = [];
+      for (const [x0, x1, z0, z1, n] of fallen) for (let q = 0, c = 0; q < 200 && c < n; q++) {
+        const x = r.range(x0, x1), z = r.range(z0, z1);
+        if (inAt(x, z) < 1 || routeDist(x, z) < 2 || waterD(x, z) < HW + 1.5) continue;
+        c++; spots.push([x, z, r.range(0, 6.28), r.chance(0.5) ? -1 : 1]);
+      }
+      if (spots.length) {
+        const dead = new THREE.InstancedMesh(fallenGeometry(), armyMat, spots.length), m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(0, 0, 0, 'YXZ'), p = new THREE.Vector3();
+        spots.forEach(([x, z, yaw], i) => dead.setMatrixAt(i, m.compose(p.set(x, topAt(x, z) - 0.02, z), q.setFromEuler(e.set(r.range(-0.06, 0.06), yaw, r.range(-0.08, 0.08))), one)));
+        dead.receiveShadow = true; dead.name = 'fallen';
+        root.add(dead);
+      }
+      meshArmies();
+      if (standards) {
+        const [n, x0, z0, x1, z1] = standards, P = PAL.foe.fallen;
+        const fallenTex = bannerTexture(A.foe.glyph, { bg: P[0], fg: P[1], border: P[2], seed: 11 });   // trampled, sun-faded, dusty
+        const fallenMat = new THREE.MeshStandardMaterial({ map: fallenTex, emissiveMap: fallenTex, emissive: 0xffffff, emissiveIntensity: 0.12, side: THREE.DoubleSide, alphaTest: 0.5, roughness: 0.95 });
+        for (let i = 0, got = 0; i < n * 6 && got < n; i++) {
+          const x = r.range(x0, x1), z = r.range(z0, z1), yaw = r.range(0, 6.28);
+          if (inAt(x, z) < 3 || routeDist(x, z) < 6) continue;             // off the road: a 4 m orange slab by the spawn filled the frame
+          got++;
+          const gy = ground(x, z), c = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 4.3, 3, 4), fallenMat);
+          c.rotation.set(-Math.PI / 2, 0, yaw); c.position.set(x, gy + 0.06, z); c.receiveShadow = true;
+          root.add(c);
+          poles.push({ s: [0.2, 0.2, 6], p: [x + Math.cos(yaw) * 1.6, gy + 0.12, z - Math.sin(yaw) * 1.6], r: [0, yaw + 0.15, 0], c: 0x3b2a1e });
+        }
+      }
+      if (dust) {
+        const dc = document.createElement('canvas'); dc.width = dc.height = 64;
+        const dg = dc.getContext('2d'), grd = dg.createRadialGradient(32, 32, 0, 32, 32, 32);
+        grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(0.5, 'rgba(255,255,255,0.45)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+        dg.fillStyle = grd; dg.fillRect(0, 0, 64, 64);
+        const dustTex = new THREE.CanvasTexture(dc), [x0, z0, x1, z1] = dust.area, [nw, wx0, wx1, wz] = dust.wall || [0];
+        for (let i = 0; i < dust.n; i++) {
+          const wall = i < nw, x = wall ? r.range(wx0, wx1) : r.range(x0, x1), z = wall ? wz - r.range(3, 12) : r.range(z0, z1);
+          // wall-foot banks kept thin: the stone coursing, ladders and banners must read through them
+          const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: dustTex, color: wall ? 0xc89c80 : 0xb08c7c, transparent: true, opacity: wall ? r.range(0.035, 0.07) : r.range(0.06, 0.13), depthWrite: false }));
+          const w = r.range(14, 26);
+          sp.scale.set(w, w * r.range(0.3, 0.45), 1);
+          sp.position.set(x, topAt(x, z) + w * 0.12, z);
+          sp.userData = { x, ph: r.range(0, 6.28), sp: r.range(0.2, 0.5) };
+          root.add(sp); dusts.push(sp);
+        }
+      }
+    },
+  };
+
+  def.dress?.(k);
+  const set = def.build?.(root, k) || {};
+  meshArmies();
 
   const glowMesh = new THREE.Mesh(boxesGeometry(glowBoxes), new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(4, 4, 4) }));
   glowMesh.name = 'paper-lanterns';
-  scene.add(glowMesh);
+  root.add(glowMesh);
   const poleMesh = new THREE.Mesh(boxesGeometry(poles.concat(props)), lensClear(lit(), 2.5));
   poleMesh.castShadow = true; poleMesh.receiveShadow = true;
-  scene.add(poleMesh);
+  root.add(poleMesh);
 
-  // fires: castle braziers / burning debris (castle frame → + CAMP_H), field wrecks, braziers, barricades, the beacon
-  for (const [x, y, z, s] of castle.fires) { fires.push([x, y + CAMP_H, z, s, undefined, null, WALL_Z - z < 4]); if (y < 1) embers.push([x, z]); }
+  // fires: castle braziers / burning debris (castle frame → + its plateau height), field wrecks, braziers, barricades…
+  if (castle) for (const [x, y, z, s] of castle.fires) { fires.push([x, y + castle.y, z, s, undefined, null, castle.wallZ - z < 4]); if (y < 1) embers.push([x, z]); }
   // under each flame: two charred logs (lit) on a bed of self-lit coals — scattered small voxels from glowing orange to
   // dull red to black ash, never one flat orange slab
   const logs = [], coals = [], cr = makeRng(91), COALS = [0xff8a30, 0xe0561c, 0xa8300f, 0x5a180a, 0x1e0e08];
   for (const [x, y, z, s, , g] of fires) {
-    if (g) continue;                                                            // barricade fires burn on the wreck itself
+    if (g) continue;                                                            // gate / set fires burn on the wreck itself
     logs.push({ s: [1.8 * s, 0.32 * s, 0.32 * s], p: [x, y + 0.16 * s, z], r: [0, 0.5, 0], c: 0x241510 }, { s: [1.8 * s, 0.32 * s, 0.32 * s], p: [x, y + 0.36 * s, z], r: [0, -0.7, 0], c: 0x2e1c10 });
-    for (let k = 0; k < 9; k++) {
-      const q = cr.range(0.07, 0.16) * s, a = cr.range(0, 6.28), d = Math.sqrt(cr.next()) * 0.42 * s;
-      coals.push({ s: [q, q * 0.7, q], p: [x + Math.cos(a) * d, y + q * 0.3, z + Math.sin(a) * d], r: [0, cr.range(0, 3), 0], c: COALS[Math.min(4, Math.floor(d / (0.42 * s) * 3 + cr.next() * 2))] });
+    for (let q = 0; q < 9; q++) {
+      const w = cr.range(0.07, 0.16) * s, a = cr.range(0, 6.28), d = Math.sqrt(cr.next()) * 0.42 * s;
+      coals.push({ s: [w, w * 0.7, w], p: [x + Math.cos(a) * d, y + w * 0.3, z + Math.sin(a) * d], r: [0, cr.range(0, 3), 0], c: COALS[Math.min(4, Math.floor(d / (0.42 * s) * 3 + cr.next() * 2))] });
     }
   }
-  scene.add(new THREE.Mesh(boxesGeometry(logs), lit()));
+  root.add(new THREE.Mesh(boxesGeometry(logs), lit()));
   const coalMesh = new THREE.Mesh(boxesGeometry(coals), new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(1.5, 1.5, 1.5) }));
   coalMesh.name = 'coals';
-  scene.add(coalMesh);
-  // far-off burning 60-140 m off the route: warm points of fire in the hazy band — a battlefield ablaze to the horizon
-  const farFires = [[-72, -96], [70, -62], [-78, 28], [72, 148], [-74, 172], [40, 236], [-86, -150]].map(([x, z]) => [x, topAt(x, z), z, 3.2]);
-  const updateFire = fireSystem(scene, fires.concat(farFires));
+  root.add(coalMesh);
+  const updateFire = fireSystem(root, fires.concat(farFires));
   // world.fires contract (vfx embers): ground-level fires near the fight; position y = 0 (vfx adds ground())
   const emberSpots = embers.map(([x, z]) => ({ position: new THREE.Vector3(x, 0, z) }));
 
   return {
-    fires: emberSpots,
-    /** Barricade meshes by gate id: { m, mat, y } (world.js collapses + chars them as the gate opens). */
-    gates: { pass, summit: summitGate },
+    fires: emberSpots, gates, set,
     update(t, focus) {
       FOCUS.value.copy(focus);
       for (const c of cloths) animateCloth(c, t);

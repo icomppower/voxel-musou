@@ -3,7 +3,8 @@
 // the pauldrons, which turn halfway with the upper arms. Chains are anchored to rig joints and simulated in world space
 // with gravity, gusting wind, drag, a pull toward the rest direction (in the anchor's frame) and sphere colliders on
 // the body (head, chest, hips, thighs, knees). Segment meshes are voxel slabs placed in world space every frame.
-// Visual state only — never touches the sim.
+// Visual state only — never touches the sim. chainSet() is the shared core (any officer's chains by joint name, e.g. a
+// def kit's chains() list: src/chars/defkit.js); bodyChains() adds Zhao Yun's / Huang Zhong's cape + apron on top of it.
 import * as THREE from 'three';
 import { vox, C, HV } from './model.js';
 import { hash01 } from '../core/rng.js';
@@ -13,7 +14,9 @@ const _x = new THREE.Vector3(), _y = new THREE.Vector3(), _z = new THREE.Vector3
 const _c = new THREE.Vector3(), _d = new THREE.Vector3();
 const B = (a, b, c) => ({ a, b, c });
 
-export function chain(scene, mat, joint, { anchor, rest, n, len, seg, stiff = 0.12, drag = 0.08, wind = 1, face = [0, 0, -1], hit = [], cone = 100, sway = 0 }) {
+/** One chain: n segments of len m from `anchor` (joint-local m) toward `rest` (joint frame), seg(i, n) → geometry; grav
+ *  scales gravity (light feathers < 1, a heavy beard > 1). */
+export function chain(scene, mat, joint, { anchor, rest, n, len, seg, stiff = 0.12, drag = 0.08, wind = 1, face = [0, 0, -1], hit = [], cone = 100, sway = 0, grav = 1 }) {
   const meshes = [];
   for (let i = 0; i < n; i++) {
     const m = new THREE.Mesh(seg(i, n), mat);
@@ -56,7 +59,7 @@ export function chain(scene, mat, joint, { anchor, rest, n, len, seg, stiff = 0.
           _t.subVectors(p[i], o[i]).multiplyScalar(1 - drag);
           o[i].copy(p[i]);
           p[i].add(_t);
-          p[i].y -= 9.8 * h * h;
+          p[i].y -= 9.8 * grav * h * h;
           // wind streams behind the hero with slow gusts and a lateral sway
           const g = 0.75 + 0.45 * Math.sin(t * 1.7 + i * 0.6) + 0.25 * Math.sin(t * 4.3 + i * 1.3);
           const w = wind * g * 5 * h * h * i / n;
@@ -170,16 +173,14 @@ function tasselSeg(i, n) {
 }
 
 // ---------------------------------------------------------------- assembly
-/** Shared by every character: cape + front apron chains (from its segment builders), the pauldron half-swing, the body
- *  colliders and the wind. → { add(joint, chainOpts) for its other chains, reset(), update(dt) → t (s) } */
-export function bodyChains(scene, rig, mat, capeSeg, apronSeg) {
+/** Chains of any officer: list = [{ joint: rig joint name, ...chain() options }], plus the pauldron half-swing (when the
+ *  model built pauldron helpers), the body colliders a chain's `hit` names (head chest hips thighL/R kneeL/R) and the
+ *  wind. → { add(joint, chainOpts) for more chains, reset(), update(dt) → t (s) } */
+export function chainSet(scene, rig, mat, list = []) {
   const j = rig.joints;
   const chains = [];
   const add = (joint, o) => chains.push(chain(scene, mat, joint, o));
-  add(j.chest, { anchor: [0, 0.255, -0.16], rest: [0, -1, 0.15], n: 6, len: 0.17, stiff: 0.16, drag: 0.22, wind: 1.1, cone: 80, sway: 0.2,
-    seg: capeSeg, hit: ['chest', 'hips', 'thighL', 'thighR', 'kneeL', 'kneeR'] });
-  add(j.hips, { anchor: [0, -0.02, 0.19], rest: [0, -1, 0.12], n: 3, len: 0.12, stiff: 0.12, drag: 0.14, wind: 0.4, face: [0, 0, 1], cone: 70, sway: 0.08,
-    seg: apronSeg, hit: [['thighL', 0.02], ['thighR', 0.02], ['kneeL', 0.02], ['kneeR', 0.02]] });
+  for (const o of list) add(j[o.joint], o);
 
   const cols = {};
   for (const k of ['head', 'chest', 'hips', 'thighL', 'thighR', 'kneeL', 'kneeR']) cols[k] = { c: new THREE.Vector3(), r: 0 };
@@ -193,9 +194,11 @@ export function bodyChains(scene, rig, mat, capeSeg, apronSeg) {
       t += dt;
       // pauldrons: swing (no twist) halfway toward the upper arm's direction, in shoulder (= chest) space
       for (const s of ['L', 'R']) {
+        const pd = j['pauldron' + s];
+        if (!pd) continue;
         _d.set(0, -1, 0).applyQuaternion(j['upperArm' + s].quaternion);
         _q.setFromUnitVectors(DOWN, _d);
-        j['pauldron' + s].quaternion.identity().slerp(_q, 0.5);
+        pd.quaternion.identity().slerp(_q, 0.5);
       }
       j.root.updateMatrixWorld(true);
       setCol('head', j.head, 0, 7 * HV, 0, 7.4 * HV);
@@ -210,6 +213,16 @@ export function bodyChains(scene, rig, mat, capeSeg, apronSeg) {
       return t;
     },
   };
+}
+
+/** Zhao Yun's build (shared with Huang Zhong): cape + front apron from the character's segment builders, on chainSet. */
+export function bodyChains(scene, rig, mat, capeSeg, apronSeg) {
+  return chainSet(scene, rig, mat, [
+    { joint: 'chest', anchor: [0, 0.255, -0.16], rest: [0, -1, 0.15], n: 6, len: 0.17, stiff: 0.16, drag: 0.22, wind: 1.1, cone: 80, sway: 0.2,
+      seg: capeSeg, hit: ['chest', 'hips', 'thighL', 'thighR', 'kneeL', 'kneeR'] },
+    { joint: 'hips', anchor: [0, -0.02, 0.19], rest: [0, -1, 0.12], n: 3, len: 0.12, stiff: 0.12, drag: 0.14, wind: 0.4, face: [0, 0, 1], cone: 70, sway: 0.08,
+      seg: apronSeg, hit: [['thighL', 0.02], ['thighR', 0.02], ['kneeL', 0.02], ['kneeR', 0.02]] },
+  ]);
 }
 
 export function createSecondary(scene, rig, mat) {

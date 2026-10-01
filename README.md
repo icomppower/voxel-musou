@@ -13,24 +13,40 @@
 | ![Zhao Yun's Musou dragon](media/dragon.jpg) | ![Huang Zhong's giant arrow](media/arrow.jpg) |
 | Zhao Yun — Musou 蒼龍破陣, the dragon | Huang Zhong — the giant arrow |
 | ![Character select](media/select.jpg) | ![Chapter I prologue](media/story.jpg) |
-| Choose your officer | Chapter I 「定軍山」 prologue |
+| Choose your officer | 「定軍山」 prologue (Chapter IV in the campaign) |
 
-A browser-playable voxel action game in the style of Dynasty Warriors, built with Three.js. Take the field as Zhao Yun (趙雲) with his spear or Huang Zhong (黃忠) with his great bow, and cut through hundreds of Wei soldiers — in the story chapter at Mount Dingjun or in an endless free battle.
+A browser-playable voxel action game in the style of Dynasty Warriors, built with Three.js. Seven playable officers cut through hundreds of soldiers across four historical story chapters, or fight endless waves in free battle.
 
 No build step: plain ES modules, Three.js r186 vendored in `vendor/three/`, deterministic fixed 60 Hz simulation.
 
 ## Features
 
-- Two playable officers with their own movesets, models and Musou:
+- Seven playable officers with their own models, N1–N6 normal strings, C1–C6 charge attacks and Musou:
+  - **Liu Bei** (劉備) — twin swords, Musou 昭烈・雙龍斬
+  - **Guan Yu** (關羽) — Green Dragon Crescent Blade, Musou 青龍偃月・天斬
+  - **Zhang Fei** (張飛) — serpent spear, Musou 燕人咆哮
   - **Zhao Yun** — spear: normal combos (N1–N6), charge attacks (C1–C6), Musou 蒼龍破陣 with a dragon
+  - **Zhuge Liang** (諸葛亮) — feather fan, wind blades and formation sigils, Musou 東風・八陣
   - **Huang Zhong** — bow: limb slashes and point-blank shots, charge shots (fan, barrage, arrow rain, fire arrow), aim mode, Musou 百步穿楊 (a flaming volley and a giant arrow)
-- Story mode, Chapter I 「定軍山」: prologue, scripted battle with dialogue, objectives, enemy officers and gates, result screen; play it as either officer (the other one joins the dialogue)
-- Free battle: endless waves
-- Four difficulties, picked after the mode on the title: 初級 · 普通 · 上級 · 修羅 (修羅 opens once Chapter I is cleared on 上級). Grunts stay one-sweep fodder; the tiers turn enemy pressure, officer toughness and the cost of a hit
+  - **Lü Bu** (呂布) — crescent halberd, Musou 天下無雙・神鬼亂舞; also the Hulao Gate boss
+- Four story chapters, unlocked in order, with independent maps, ink-map prologues, dialogue branches and endings:
+  - **I · Hulao Gate** (虎牢關, 190): Liu Bei / Guan Yu / Zhang Fei; Guan Yu's timed Hua Xiong duel and the three brothers against Lü Bu
+  - **II · Changban** (長坂坡, 208): Zhao Yun rescues A Dou and returns; Zhang Fei holds and breaks the bridge
+  - **III · Red Cliffs** (赤壁, 208): Zhuge Liang / Zhao Yun; defend the altar, summon the east wind, burn the chained ships and pursue Cao Cao to Huarong Road
+  - **IV · Mount Dingjun** (定軍山, 219): Huang Zhong / Zhao Yun; fight uphill against Xiahou Yuan
+- Trials (演武試煉), ranked score attacks open to every officer; unlike free battle, the hero can fall:
+  - **Thousand Slain** (千人斬): 1,000 KOs against a 3-minute clock
+  - **Hold the Bridge** (死守): keep Changban Bridge for 4 minutes against ever heavier pushes; ranked by KOs
+  - **The Gauntlet** (過關斬將): Xiahou Yuan, Zhang Liao, Cao Cao and Lü Bu at their story strength, one after another
+- Free battle: endless waves on any field, found at the end of the trial list
+- Records: best rank, fastest clear and most KOs per chapter / trial × officer × difficulty, shown on the title, the select screen and a records wall (戰績); a new best is marked on the result screen
+- Unlocks earned by clears: the later chapters in order, Lü Bu after chapter I, Hold the Bridge after chapter II, the Gauntlet after chapter IV
+- Four difficulties, picked after the mode on the title: 初級 · 普通 · 上級 · 修羅 (修羅 opens once any battle is cleared on 上級). Grunts stay one-sweep fodder; the tiers turn enemy pressure, officer toughness and the cost of a hit
 - Jump, jump attack, dodge; hit-stop and impact VFX
 - Dense voxel crowds of Wei soldiers (~300, InstancedMesh) blasted apart into voxel debris, allied Shu troops
-- Enemy officers with name and HP tags
-- Golden-hour valley battlefield with a river, camps, castle, fires and banners
+- Enemy officers and allied hero NPCs with name and HP tags; Cao Cao, Zhang Liao and Xiahou Yuan have dedicated boss models and telegraphed attacks
+- Army-specific colours and banners; meat buns restore HP, and defeat topples the hero
+- Daylight Hulao Gate, dusk at Changban, the Red Cliffs night fleet and the golden-hour Mount Dingjun valley; maps switch in the same page
 - Custom post-processing: atmospheric haze, depth of field, bloom, retro pixel look
 - Procedural WebAudio sound
 - Calligraphy-style title, character select, HUD and ink-wipe transitions
@@ -69,16 +85,18 @@ Keyboard and mouse, or a gamepad.
 | URL parameter | Description |
 | --- | --- |
 | `?enemies=N` | Number of enemy soldiers, 0–2000 (default 300) |
-| `?go=free\|story&char=zhaoyun\|huangzhong` | Skip the menus straight into a battle |
+| `?go=free\|story\|trial&char=ID&ch=ID` | Skip the menus into a battle; character IDs: `liubei`, `guanyu`, `zhangfei`, `zhaoyun`, `zhugeliang`, `huangzhong`, `lubu`; chapter IDs: `hulao`, `changban`, `chibi`, `dingjun`; trial IDs: `slay`, `hold`, `gauntlet` |
+| `?map=ID` | Battlefield for a free battle; uses the same IDs as the chapters |
 | `?hq` | Pin full render quality (no automatic MSAA downgrade) |
 
 ## Project layout
 
 ```
 index.html      entry point, importmap, all screen CSS
-src/            core, hero, chars (per-character kits), combat, crowd, musou, camera, vfx, post, world, audio,
-                story (chapter script, prologue, result), ui
+src/            core (incl. records and unlocks), hero, chars (per-character kits), combat, crowd, musou, camera, vfx,
+                post, world, audio, story (chapter and trial scripts, prologue, result), ui
 vendor/three/   Three.js r186
+checks/         Node regression checks and the trial balance bot (`node checks/<name>.mjs`, Node 22.15+)
 media/          README screenshots and GIF
 ```
 

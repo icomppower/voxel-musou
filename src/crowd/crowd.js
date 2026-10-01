@@ -1,5 +1,6 @@
-// Wei army (sim). Struct-of-arrays for every soldier.
-//  · Squads: the army stands in rectangular blocks led by a 魏 standard-bearer and a captain. A director keeps
+// The battle's two armies (sim): the foe army and its allies (game.army = { foe, ally }, crowd/armies.js — the sim
+// only reads names / looks from it; colours are the view's). Struct-of-arrays for every soldier.
+//  · Squads: the army stands in rectangular blocks led by a standard-bearer and a captain. A director keeps
 //    ~CROWD.engaged soldiers on the hero: only free soldiers standing in the ring count (+ a third of every block en
 //    route), so a sweep releases the next block at once. It sends the nearest block marching in formation (it wheels
 //    to face him), halts it for a beat, then it charges and folds into the ring.
@@ -17,21 +18,23 @@
 //    spawns 16-26 m out in front of the camera and runs in; `crowd:wave` announces it. Waves only run once a scenario
 //    spawned an army or a ring (setWaves).
 //  · Story API (src/story drives it): spawnSquad, spawnOfficer, setWaves, retire, spawnAllies, setAllies — see
-//    below. Officers carry a name (c.offName[i - grunts] = {zh, en}, shown by the HUD tags) and a boss flag (c.boss[i]).
-//  · Shu allies: the same arrays past the Wei army, indices N … T-1 (N = Wei grunts + officer slots). Everything that
+//    below. Officers carry a name (c.offName[i - grunts] = {zh, en}, shown by the HUD tags), a look (c.offLook[i - grunts]:
+//    null = the army's officer, else armies.js look — the view draws it) and a boss flag (c.boss[i]). Free mode fields
+//    the foe army's named officers (game.army.foe.officers, slot order); so does a trial beat's `army`.
+//  · Allies (the ally army, e.g. 蜀): the same arrays past the foe army, indices N … T-1 (N = foe grunts + officer slots). Everything that
 //    loops i < N (hero hits, arrows, Musou, lock-on, HUD tags, the director, rings, tokens) never sees them; the AI loop,
 //    separate(), combat reactions() and the view run to T. An ally keeps pace with the hero in a slot 7.5-11.5 m off
 //    him, 35-80° off the front on either side (the front = the camera yaw, eased: in view, beside the fight), takes the
 //    road (map.js routeS / routeAt) when he is far ahead or a palisade / pool / cliff is in the way, and pairs with a
-//    Wei grunt 7-20 m from the hero (never the hero's ring, never across him): c.foe links the two, both square up at
+//    foe grunt 7-20 m from the hero (never the hero's ring, never across him): c.foe links the two, both square up at
 //    arm's length and trade blows (duel(): the strike timings / poses of a blow on the hero, no telegraph; combat.clash
-//    lands it). A Wei soldier the hero comes within CROWD.duelBreak of is released to the ring. Columns of 5-8 run up
+//    lands it). A foe soldier the hero comes within CROWD.duelBreak of is released to the ring. Columns of 5-8 run up
 //    the road behind the hero while the allies are under strength (`crowd:allies`); they cheer when he sweeps a ring
 //    (≥ 10 KOs in 1 s) or fells an officer.
 // Reaction states (HURT..GETUP) are driven by src/combat; this module owns the rest.
 import { rng, hash01 } from '../core/rng.js';
 import { emit, on } from '../core/events.js';
-import { clampWalk, routeS, routeAt } from '../world/map.js';
+import { clampWalk, routeS, routeAt, MAP } from '../world/map.js';
 
 export const ST = { OFF: 0, IDLE: 1, ADVANCE: 2, GUARD: 3, ATTACK: 4, HURT: 5, KNOCK: 6, AIR: 7, DOWN: 8, GETUP: 9, DEAD: 10 };
 const isReacting = (s) => s >= ST.HURT && s <= ST.GETUP;
@@ -39,9 +42,6 @@ export const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 /** Visual/role kind (type stays 0 grunt / 1 officer for combat). */
 export const KIND = { SPEAR: 0, SWORD: 1, CAPTAIN: 2, BEARER: 3, OFFICER: 4 };
 const SQ_HOLD = 1, SQ_MARCH = 2, SQ_HALT = 3, SQ_CHARGE = 4;
-
-// free-mode (arena) officers, in slot order
-const FREE_OFFICERS = [{ zh: '夏侯恩', en: 'XIAHOU EN' }, { zh: '晏明', en: 'YAN MING' }, { zh: '淳于導', en: 'CHUNYU DAO' }, { zh: '張郃', en: 'ZHANG HE' }];
 
 export const CROWD = {
   officers: 4,                  // officers the free-mode army fields (and brings back with the waves)
@@ -60,12 +60,12 @@ export const CROWD = {
   engaged: 84, transit: 72,                                   // director target: soldiers on the hero; cap on blocks en route
   halt: 15, haltFrames: 36, fold: 7.5,                        // squad: halt at 15 m, then charge, fold at 7.5 m
   wave: [8, 15], waveEvery: [45, 110], waveDist: [16, 26],   // columns every 0.75 s below half strength, else 1.8 s
-  allySlots: 40, allyKeep: 24, allyCol: [5, 8], allyEvery: 1200, allyHp: 50,   // Shu: a column every 20 s while below 24
+  allySlots: 40, allyKeep: 24, allyCol: [5, 8], allyEvery: 1200, allyHp: 50,   // allies: a column every 20 s while below 24
   allyScan: 12, allyReach: [7, 20], duelBreak: 4.5, duelR: 1.5,              // foe ≤ 12 m off the ally, 7-20 m off the hero
-  duelCd: [50, 150], duelHit: 0.55, duelDmg: [[7, 11], [5, 8]],              // blow lands 55 %: ally → Wei 7-11, Wei → ally 5-8
+  duelCd: [50, 150], duelHit: 0.55, duelDmg: [[7, 11], [5, 8]],              // blow lands 55 %: ally → foe 7-11, foe → ally 5-8
 };
 const DT = 1 / 60;
-const CELL = 1.2, GRID = 400, HALF = GRID * CELL / 2;           // ±240 m: the whole 定軍山 field (world/map.js)
+const CELL = 1.2, GRID = 400, HALF = GRID * CELL / 2;           // ±240 m: every map fits within ±230 m (world/maps)
 const MAXSQ = 64;
 
 export function createCrowd(game, grunts) {
@@ -81,10 +81,11 @@ export function createCrowd(game, grunts) {
     sq: { x: F(MAXSQ), z: F(MAXSQ), face: F(MAXSQ), st: I(MAXSQ), t: I(MAXSQ), n: 0 },
     raiseF: I(), feint: I(), wind: I(),                         // raiseF: rallying until (render + ring surge); feint strike; winding up
     hitHeavy: I(),                                              // last hit was heavy (set by combat, read by view.js hitGlow)
-    foe: I(),                                                   // duel partner (ally ↔ Wei grunt), -1 = none
+    foe: I(),                                                   // duel partner (ally ↔ foe grunt), -1 = none
     via: I(),                                                   // ally: sf left on the road (the straight line was blocked)
     boss: I(), offName: new Array(CROWD.officerSlots).fill(null),   // story: boss flag; officer display names {zh, en}
-    waveT: 0, tokensUsed: 0, strikeF: 0, gap: 0, graceF: 0, heroHp: 0, wavesOn: false, engaged: 0, zMax: Infinity,   // zMax: story stage bound (waves)
+    offLook: new Array(CROWD.officerSlots).fill(null),              // officer looks (armies.js), null = the army's officer
+    waveT: 0, tokensUsed: 0, strikeF: 0, gap: 0, graceF: 0, heroHp: 0, wavesOn: false, armyOn: false, engaged: 0, zMax: Infinity,   // zMax: story stage bound (waves); armyOn: spawnArmy fielded the free army
     alliesOn: false, allyT: 0, front: 0, kosAgo: [0, 0], cheerF: 0, allyKos: 0, allyLost: 0,   // allyKos / allyLost: duel KOs
   };
   const head = new Int32Array(GRID * GRID), next = new Int32Array(T);
@@ -109,11 +110,16 @@ export function createCrowd(game, grunts) {
     c.strafe[i] = rng.chance(0.5) ? 1 : -1;
     c.squad[i] = -1; c.form[i] = 0; c.foe[i] = -1; c.via[i] = 0;
   }
+  /** Free-mode officer in slot i: the foe army's named officer for that slot (name + look). */
+  function freeOfficer(i) {
+    const list = game.army.foe.officers, o = list[(i - grunts) % list.length];
+    c.offName[i - grunts] = o; c.offLook[i - grunts] = o.look || null;
+  }
   function setBand(i, k) { c.band[i] = k; c.pref[i] = rng.range(CROWD.bands[k][0], CROWD.bands[k][1]); c.seated[i] = 0; }
 
   c.reset = () => {
-    c.offName.fill(null);
-    c.st.fill(ST.OFF); c.token.fill(0); c.tokensUsed = 0; c.strikeF = 0; c.gap = 0; c.graceF = 0; c.heroHp = game.hero.hp; c.waveT = 0; c.sq.n = 0; c.wavesOn = false; c.zMax = Infinity;
+    c.offName.fill(null); c.offLook.fill(null);
+    c.st.fill(ST.OFF); c.token.fill(0); c.tokensUsed = 0; c.strikeF = 0; c.gap = 0; c.graceF = 0; c.heroHp = game.hero.hp; c.waveT = 0; c.sq.n = 0; c.wavesOn = c.armyOn = false; c.zMax = Infinity;
     c.foe.fill(-1); Object.assign(c, { alliesOn: false, allyT: 0, front: game.cam.yaw, kosAgo: [0, 0], cheerF: 0, allyKos: 0, allyLost: 0 });
   };
 
@@ -150,28 +156,29 @@ export function createCrowd(game, grunts) {
     return q;
   }
 
-  /** Squads spread over the field around the origin: the default army layout. One big block waits in front of the
-   *  camera (toward the castle), most other squads stand on that side too, a few flank and close the rear. */
+  /** Squads spread over the field around the free-mode arena centre (the map's spawn.free): the default army layout.
+   *  One big block waits in front of the camera (the way forward), most other squads stand on that side too, a few
+   *  flank and close the rear. */
   c.spawnArmy = () => {
-    c.wavesOn = true;
+    c.wavesOn = c.armyOn = true;
     const slots = freeSlots(false);
-    const fwd = game.cam.yaw;
+    const fwd = game.cam.yaw, { x: ox, z: oz } = MAP.spawn.free;
     let k = 0, n = 0;
     while (k < slots.length) {
       const big = n === 0 && slots.length >= 120;
       const size = Math.min(slots.length - k, big ? rng.int(50, 60) : rng.int(18, 30));
       const a = big ? fwd + rng.range(-0.25, 0.25) : n % 3 === 2 ? fwd + Math.PI + rng.range(-1.4, 1.4) : fwd + rng.range(-1.8, 1.8);
       const d = big ? rng.range(24, 28) : rng.range(11, 34);
-      const sx = Math.sin(a) * d, sz = clampWalk(sx, Math.cos(a) * d, 3)[1];
-      const face = Math.atan2(-sx, -sz);
+      const sx = ox + Math.sin(a) * d, sz = clampWalk(sx, oz + Math.cos(a) * d, 3)[1];
+      const face = Math.atan2(ox - sx, oz - sz);
       makeSquad(slots.slice(k, k + size), sx, sz, face, big ? 10 : Math.max(4, Math.round(Math.sqrt(size * 1.6))), SQ_HOLD);
       k += size; n++;
     }
     for (const i of freeSlots(true)) {
       if (i >= grunts + CROWD.officers) break;
       const a = rng.range(0, Math.PI * 2), d = rng.range(12, 30);
-      place(i, Math.cos(a) * d, Math.sin(a) * d, false);
-      c.offName[i - grunts] = FREE_OFFICERS[(i - grunts) % FREE_OFFICERS.length];
+      place(i, ox + Math.cos(a) * d, oz + Math.sin(a) * d, false);
+      freeOfficer(i);
     }
   };
 
@@ -187,13 +194,14 @@ export function createCrowd(game, grunts) {
   };
   /** A named officer at (x, z): name {zh, en} (HUD tag / target bar / KO banner), hp (default CROWD.officerHp), boss
    *  (flag for the story / HUD), engaged: start closing in at once (else he waits until the hero comes within
-   *  CROWD.officerAggro). Returns his soldier index, or -1 when every officer slot is taken. */
-  c.spawnOfficer = ({ x, z, name, hp = CROWD.officerHp, boss = false, engaged = false }) => {
+   *  CROWD.officerAggro), look (armies.js officer look; default: the army's officer). Returns his soldier index, or -1
+   *  when every officer slot is taken. */
+  c.spawnOfficer = ({ x, z, name, hp = CROWD.officerHp, boss = false, engaged = false, look = null }) => {
     const i = freeSlots(true)[0];
     if (i === undefined) return -1;
     place(i, x, z, engaged);
     c.hp[i] = c.hpMax[i] = hp * game.diff.officerHp; c.boss[i] = boss ? 1 : 0;
-    c.offName[i - grunts] = name;
+    c.offName[i - grunts] = name; c.offLook[i - grunts] = look;
     return i;
   };
   /** Reinforcement columns on/off (they run while the ring is under strength, see waves()). */
@@ -201,8 +209,8 @@ export function createCrowd(game, grunts) {
   /** Stage change: grunts still standing idle (holding blocks never sent) south of z are removed, freeing their slots
    *  for the next area; soldiers already on the move keep coming. A squad left empty is freed by squads(). */
   c.retire = (z) => { for (let i = 0; i < grunts; i++) if (c.st[i] === ST.IDLE && c.z[i] < z) c.st[i] = ST.OFF; };
-  /** Shu allies: a block of n (what is free of CROWD.allySlots) at (x, z) facing `face`, `cols` wide, 1.25 × 1.45 m apart,
-   *  a 蜀 standard-bearer every 9th. hold: stand in rank (the story van) until the hero has marched past; else they
+  /** Allies: a block of n (what is free of CROWD.allySlots) at (x, z) facing `face`, `cols` wide, 1.25 × 1.45 m apart,
+   *  a standard-bearer every 9th. hold: stand in rank (the story van) until the hero has marched past; else they
    *  fall in with him at once. */
   c.spawnAllies = ({ x, z, n, face = 0, cols = 4, hold = false }) => {
     const sn = Math.sin(face), cs = Math.cos(face);
@@ -212,7 +220,7 @@ export function createCrowd(game, grunts) {
       c.yaw[i] = face; c.form[i] = hold ? 1 : 0; c.band[i] = 1;
     });
   };
-  /** Shu reinforcement columns on/off (they run up the road while the allies are under strength, see allyColumns()). */
+  /** Ally reinforcement columns on/off (they run up the road while the allies are under strength, see allyColumns()). */
   c.setAllies = (on) => { c.alliesOn = !!on; };
 
   /** Nearest alive enemy within maxR whose bearing is within `cone` radians of `yaw`. */
@@ -245,7 +253,7 @@ export function createCrowd(game, grunts) {
     for (let i = 0; i < N; i++) if (c.st[i] === ST.ATTACK && c.stT[i] < game.diff.windup && c.foe[i] < 0) strikers++;
     const busy = h.state === 'attack';
     c.front += wrap(game.cam.yaw - c.front) * 0.01;                 // allies' front: the view direction, eased (≈ 1.7 s)
-    // ---- AI (Wei army, then the Shu allies)
+    // ---- AI (foe army, then the allies)
     for (let i = 0; i < T; i++) {
       const s = c.st[i];
       if (s === ST.OFF) continue;
@@ -376,7 +384,7 @@ export function createCrowd(game, grunts) {
   };
   on('ko', (e) => { if (e.officer) cheer(); });                      // (sim-side: combat emits it inside step())
 
-  // ---- Shu allies + duels. ally() / duel() leave the step's velocity in mvx, mvz.
+  // ---- allies + duels. ally() / duel() leave the step's velocity in mvx, mvz.
   let mvx = 0, mvz = 0;
   const alive = (s) => s !== ST.OFF && s !== ST.DEAD;
   /** Straight walk (x0, z0) → (x1, z1) stays on open ground (samples at ¼ ½ ¾; palisades, pools, closed gates, cliffs). */
@@ -390,7 +398,7 @@ export function createCrowd(game, grunts) {
   function unpair(i) { const f = c.foe[i]; if (f >= 0 && c.foe[f] === i) c.foe[f] = -1; c.foe[i] = -1; }
   /** Duel of i with c.foe[i]: square up at arm's length, circle, trade blows (the wind-up / strike / recover timings
    *  and poses of a blow on the hero, no telegraph); one side swings at a time, nobody hits a man on the ground.
-   *  Returns false (unpaired: i falls back to its own AI) once the foe is gone, too far, or the Wei side of the pair is
+   *  Returns false (unpaired: i falls back to its own AI) once the foe is gone, too far, or the foe side of the pair is
    *  within CROWD.duelBreak of the hero (he is the hero's now) or the ally side over 26 m off him (back to the front). */
   function duel(i, h) {
     const f = c.foe[i], sf = c.st[f], w = i < N ? i : f, a = i < N ? f : i;
@@ -461,7 +469,7 @@ export function createCrowd(game, grunts) {
     if ((game.frame + i) % 12 === 0 && c.kind[i] !== KIND.BEARER) pickFoe(i, h);
     return true;
   }
-  /** Nearest Wei grunt for ally i: free (not in a duel, no attack token, not mid-strike or reacting), 7-20 m off the
+  /** Nearest foe grunt for ally i: free (not in a duel, no attack token, not mid-strike or reacting), 7-20 m off the
    *  hero (his ring stays his), inside the stage bound, ≤ CROWD.allyScan off the ally, and not across the hero. */
   function pickFoe(i, h) {
     let best = -1, bd = CROWD.allyScan ** 2;
@@ -494,7 +502,7 @@ export function createCrowd(game, grunts) {
       if ((s === ST.GUARD || s === ST.ADVANCE) && c.foe[i] < 0 && !c.form[i] && (c.x[i] - h.x) ** 2 + (c.z[i] - h.z) ** 2 < 900) c.raiseF[i] = game.frame + 70 - (i % 5) * 5;
     }
   }
-  /** A Shu column (CROWD.allyCol) runs up the road from ≈ 26 m behind the hero every CROWD.allyEvery sf while the
+  /** An ally column (CROWD.allyCol) runs up the road from ≈ 26 m behind the hero every CROWD.allyEvery sf while the
    *  allies are under CROWD.allyKeep. */
   function allyColumns(h) {
     if (!c.alliesOn || ++c.allyT < CROWD.allyEvery) return;
@@ -718,10 +726,11 @@ export function createCrowd(game, grunts) {
     if (wz > c.zMax - 4) wz = Math.min(c.zMax - 4, 2 * h.z - wz);
     const [sx, sz] = clampWalk(h.x + Math.sin(a) * d, wz, 1);
     makeSquad(off.slice(0, n), sx, sz, Math.atan2(h.x - sx, h.z - sz), 3, SQ_CHARGE);   // a column that runs straight in
-    // free mode: KO'd officers come back with the waves (story officers are named and stay down)
+    // the free army (spawnArmy: free mode, a trial's `army`): its KO'd officers come back with the waves (scripted
+    // officers are named and stay down)
     for (const i of freeSlots(true)) {
-      if (game.mode === 'story' || i >= grunts + CROWD.officers) break;
-      place(i, sx + rng.range(-2, 2), sz + rng.range(-2, 2), true); c.offName[i - grunts] = FREE_OFFICERS[(i - grunts) % FREE_OFFICERS.length];
+      if (!c.armyOn || i >= grunts + CROWD.officers) break;
+      place(i, sx + rng.range(-2, 2), sz + rng.range(-2, 2), true); freeOfficer(i);
       break;
     }
     emit('crowd:wave', { x: sx, z: sz });
