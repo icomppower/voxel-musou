@@ -7,7 +7,7 @@
 // select (rank chips, locked officers), result (new records, unlock lines).
 const KEY = 'voxel-musou.save', ORDER = 'SABC';
 const load = () => {
-  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s?.v === 1) return s; } catch { /* no storage / bad JSON: a fresh save */ }
+  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s?.v === 1 && s.rec) return s; } catch { /* no storage / bad JSON: a fresh save */ }
   return { v: 1, rec: {} };
 };
 const better = (a, b) => ORDER.indexOf(a) < ORDER.indexOf(b);

@@ -236,4 +236,4 @@ for (const C of TRIALS) {
     } finally { f.off(); }
   }
 }
-console.log('PASS trial S requires its clear-time/KO gate and at most 35% damage; Easy caps at A');
+console.log('PASS trial S requires its clear-time/KO gate and its damage cap; Easy caps at A');
