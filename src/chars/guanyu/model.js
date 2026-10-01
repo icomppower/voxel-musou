@@ -163,7 +163,8 @@ function head() {
     ...symH(2, 6, 11, 13, 5, 7, C.beard, false), ...symH(6, 8, 12, 14, 5, 7, C.beard, false),
     P([0, 11, 5], [1, 13, 6], C.skinD),                                            // frown line
     // long straight nose
-    B([0, 4, 6], [1, 11, 7], C.skin), B([-1, 4, 6], [2, 6, 7], C.skin), P([-1, 4, 6], [0, 5, 7], C.skinD), P([1, 4, 6], [2, 5, 7], C.skinD),
+    B([-1, 6, 6], [2, 11, 8], C.skinH), B([-1, 4, 7], [2, 6, 9], C.skin),
+    P([-2, 5, 6], [-1, 9, 8], C.skinD), P([-1, 4, 8], [0, 5, 9], C.lip), P([1, 4, 8], [2, 5, 9], C.lip),
     P([-2, 2, 5], [3, 3, 6], C.lip),                                               // stern mouth
     // moustache: from under the nose, drooping past the mouth corners
     B([-2, 3, 6], [3, 4, 8], C.beard), ...symH(3, 5, 1, 4, 5, 8, C.beard, false), ...symH(5, 6, -1, 2, 5, 8, C.beard, false),
@@ -273,7 +274,7 @@ export const GUANYU_DEF = {
         cone: 110, sway: 0.45, face: [0, 0, -1], seg: wrapTail, hit: ['head', ['chest', 0.03]] });
     }
     // robe skirt panels: a broad one behind (to the shins), two in front either side of the slit, one each side
-    out.push({ joint: 'hips', anchor: [0, -0.19, -0.14], rest: [0, -1, -0.12], n: 4, len: 0.13, stiff: 0.14, drag: 0.2, wind: 1.0, cone: 75, sway: 0.15,
+    out.push({ joint: 'hips', anchor: [-0.075, -0.13, -0.145], rest: [-0.16, -1, -0.08], n: 4, len: 0.13, stiff: 0.16, drag: 0.22, wind: 1.1, cone: 80, sway: 0.2,
       face: [0, 0, -1], seg: panel(14), hit: hips });
     for (const sx of [-1, 1]) {
       out.push({ joint: 'hips', anchor: [sx * 0.07, -0.19, 0.15], rest: [sx * 0.05, -1, 0.12], n: 4, len: 0.12, stiff: 0.13, drag: 0.18, wind: 0.5, cone: 70,

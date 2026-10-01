@@ -22,7 +22,7 @@ export const CH = {
 export const SPK = {
   liubei: { name: { zh: '劉備', en: 'Liu Bei' }, seal: '劉', side: 'shu' },
   fazheng: { name: { zh: '法正', en: 'Fa Zheng' }, seal: '法', side: 'shu' },
-  yuan: { name: { zh: '夏侯淵', en: 'Xiahou Yuan' }, seal: '淵', side: 'wei' },
+  yuan: { name: { zh: '夏侯淵', en: 'Xiahou Yuan' }, seal: '淵', side: 'wei', char: 'xiahouyuan' },
   zhanghe: { name: { zh: '張郃', en: 'Zhang He' }, seal: '郃', side: 'wei' },
   shang: { name: { zh: '夏侯尚', en: 'Xiahou Shang' }, seal: '尚', side: 'wei' },
   duxi: { name: { zh: '杜襲', en: 'Du Xi' }, seal: '襲', side: 'wei' },

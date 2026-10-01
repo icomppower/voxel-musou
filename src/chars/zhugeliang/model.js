@@ -90,7 +90,7 @@ function torso() {
     B([-10, 16, -7], [-7, 22, 2], C.K), B([7, 16, -7], [10, 22, 2], C.K),
     B([-6, 16, -6], [6, 26, 6], -1),                                      // neck hole
   ];
-  T.neck = [B([-4, -2, -4], [4, 6, 4], C.skinD), P([-4, 2, 3], [4, 6, 4], C.skin)];
+  T.neck = [B([-4, -2, -4], [4, 6, 4], (x, y, z) => z > 2 ? C.skin : C.skinD)];
   return T;
 }
 
@@ -123,12 +123,12 @@ function limbs(T) {
 
 // ---------------------------------------------------------------- head (HV voxels, chin y 0, columns centred on 0)
 function head() {
-  const hair = (x, y, z) => (md(x * 3 + z + y, 5) === 0 ? C.hairH : C.hair);
+  const hair = (x, y, z) => (hash01(x, y, z + 147) < 0.18 ? C.hairH : C.hair);
   // 綸巾: silk crown with soft vertical folds, sloping to a ridge (a roof from the front), a dark band with a jade bead
   const silk = (x, y, z) => (md(x + (z >> 2), 4) === 0 ? C.Nd : y > 19 && md(z, 3) === 0 ? C.Nl : C.N);
   return [
     // long calm face: skull, narrow jaw and chin, ears
-    B([-6, 2, -6], [7, 13, 6], C.skin),
+    B([-5, 1, -5], [6, 5, 5], C.skin), B([-6, 5, -6], [7, 10, 6], C.skin), B([-5, 10, -5], [6, 14, 5], C.skin),
     B([-5, 0, -5], [6, 2, 5], C.skin), B([-3, -1, -3], [4, 0, 4], C.skin),
     B([-7, 6, -1], [8, 10, 2], C.skinD),
     ...symH(4, 6, 5, 7, 5, 6, C.skinH),                                            // cheekbones
@@ -137,7 +137,8 @@ function head() {
     ...symH(2, 6, 8, 9, 5, 6, C.eye), ...symH(6, 7, 9, 10, 5, 6, C.eye),
     ...symH(1, 5, 10, 11, 5, 6, C.hair), ...symH(5, 7, 11, 12, 5, 6, C.hair),
     // fine nose, small mouth; a thin moustache drooping past the corners; the goatee (its long point is a chain)
-    B([0, 5, 6], [1, 9, 7], C.skin), B([-1, 4, 6], [2, 5, 7], C.skin), P([-1, 4, 6], [0, 5, 7], C.skinD), P([1, 4, 6], [2, 5, 7], C.skinD),
+    ...Array.from({ length: 5 }, (_, i) => B([0, 5 + i, 6], [1, 6 + i, 8 + Math.floor((4 - i) / 2)], C.skinH)),
+    B([-1, 4, 6], [2, 6, 8], C.skin), P([-1, 5, 6], [0, 8, 8], C.skinD),
     P([-1, 2, 5], [2, 3, 6], C.lip),
     B([-3, 3, 6], [4, 4, 7], (x) => (x === 0 ? null : C.hair)), B([-4, 1, 5], [-3, 3, 7], C.hair), B([4, 1, 5], [5, 3, 7], C.hair),
     B([-1, -3, 3], [2, 1, 6], hair),
@@ -172,18 +173,16 @@ function weaponGeo() {
     fan.push(B([0, y, z], [1, y + 1, z + 1], r > R - 3 ? C.tip : q < 0.55 ? C.quill : r < 9 ? C.featherD : C.feather));
   }
   const fanGeo = vox(fan, fv, { off: [-0.5, 0, 0], jitter: 0.03, ao: 0.2 });
-  // wind blade: a long curved band of moving air, white at its spine, violet at the edges, torn into streaks
-  const bv = 0.015, wb = [], z0 = Math.round(0.66 / bv), z1 = Math.round(1.95 / bv);
-  for (let z = z0; z < z1; z++) {
-    const u = (z - z0) / (z1 - z0), cy = 5 * Math.sin(u * Math.PI) - 1.5 * u;
-    const w = Math.max(0.8, 5.2 * Math.sin(Math.PI * Math.min(1, u * 1.15)) * (1 - 0.45 * u));
-    for (let y = Math.floor(cy - w); y < Math.ceil(cy + w); y++) {
-      const d = Math.abs(y + 0.5 - cy) / w;
-      if (d > 0.55 && md(z + y * 3, 5) === 0) continue;                  // torn edge streaks
-      wb.push(B([0, y, z], [1, y + 1, z + 1], d < 0.25 ? C.windH : d < 0.7 ? C.wind : C.windD));
+  // Three separated feather-shaped gusts: tapered strips on different depth planes, with staggered ends.
+  const bv = 0.014, wb = [];
+  for (const [start, end, base, bend, layer] of [[0.67, 1.9, -0.07, 0.11, 0], [0.77, 1.65, 0.04, -0.08, 1], [0.9, 1.8, 0.1, 0.07, -1]]) {
+    for (let i = 0; i < 44; i++) {
+      const u = i / 43, z = Math.round((start + (end - start) * u) / bv);
+      const y = Math.round((base * (1 - u) + 4 * bend * u * (1 - u)) / bv), width = Math.max(1, Math.round((0.014 + 0.022 * (1 - u)) / bv));
+      wb.push(B([layer, y - width, z], [layer + 1, y + width + 1, z + 1], (_, yy) => Math.abs(yy - y) < 1 ? C.windH : Math.abs(yy - y) >= width ? C.windD : C.wind));
     }
   }
-  const wind = vox(wb, bv, { off: [-0.5, 0, 0], jitter: 0, ao: 0 });
+  const wind = vox(wb, bv, { jitter: 0, ao: 0 });
   const windMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
     depthWrite: false, side: THREE.DoubleSide, fog: false });
   return [{ geo: fanGeo, mat: 'body' }, { geo: wind, mat: windMat }];
@@ -229,10 +228,14 @@ const panelSeg = (sx) => (i, n) => {
     return robe(x, y + i * 10, 2);
   }), B([-5, -10, -1], [5, 0, 0], C.Id)], FV, { off: [0, 0, -0.5], jitter: 0.03, ao: 0.18 });
 };
+// Separate waved locks, each with a narrow rounded section instead of a frayed flat slab.
 const hairSeg = (i, n) => {
-  const w = Math.max(3, Math.round(7 - (i * 3) / (n - 1))), tip = i === n - 1;
-  return vox([B([-w, -6, -1], [w, 0, 1], (x, y) => (tip && md(x, 2) === 0 && y < -2 ? null : md(x * 2 + i, 5) === 0 ? C.hairH : C.hair))],
-    FV, { off: [0, 0, -0.5], jitter: 0.05, ao: 0.25 });
+  const locks = [];
+  for (let y = -7; y < 0; y++) {
+    const x = Math.round(Math.sin((i * 7 - y) * 0.35) * 0.8);
+    locks.push(B([x - 2, y, -1], [x + 3, y + 1, 2], (xx) => Math.abs(xx - x) > 1 ? C.hairH : C.hair));
+  }
+  return vox(locks, FV, { jitter: 0.02, ao: 0.21 });
 };
 const ribbonSeg = (i, n) => vox([B([-2, -7, 0], [2, 0, 1], (x, y) => (i === n - 1 && y < -5 && x !== -1 ? null : x === -2 ? C.Nd : C.N))],
   FV, { off: [0, 0, -0.5], jitter: 0.04, ao: 0.15 });
@@ -250,21 +253,22 @@ export const ZHUGELIANG_DEF = {
   chains() {
     const out = [];
     // the cloak from the collar to the ankles (heaviest), the two front panels, hair, the cap's ribbons, goatee, pendant
-    out.push({ joint: 'chest', anchor: [0, 0.23, -0.13], rest: [0, -1, -0.08], n: 8, len: 0.15, stiff: 0.2, drag: 0.22, wind: 1.2, cone: 70, sway: 0.2,
+    out.push({ joint: 'chest', anchor: [0, 0.23, -0.13], rest: [0, -1, -0.08], n: 8, len: 0.15, stiff: 0.16, drag: 0.22, wind: 1.1, cone: 80, sway: 0.2,
       seg: cloakSeg, hit: ['chest', 'hips', 'thighL', 'thighR', 'kneeL', 'kneeR'] });
     for (const sx of [-1, 1]) {
-      out.push({ joint: 'hips', anchor: [sx * 0.085, -0.06, 0.13], rest: [sx * 0.04, -1, 0.1], n: 5, len: 0.125, stiff: 0.12, drag: 0.18, wind: 0.8, face: [0, 0, 1], cone: 70, sway: 0.12,
+      out.push({ joint: 'hips', anchor: [sx * 0.085, -0.06, 0.13], rest: [sx * 0.04, -1, 0.1], n: 5, len: 0.125, stiff: 0.12, drag: 0.14, wind: 0.4, face: [0, 0, 1], cone: 70, sway: 0.08,
         seg: panelSeg(sx), hit: [['thighL', 0.035], ['thighR', 0.035], ['kneeL', 0.035], ['kneeR', 0.035]] });
     }
-    out.push({ joint: 'head', anchor: [0, 6 * HV, -8 * HV], rest: [0, -1, -0.25], n: 6, len: 0.075, stiff: 0.1, drag: 0.14, wind: 1.3, cone: 75, sway: 0.25,
-      seg: hairSeg, hit: ['head', ['chest', 0.045]] });
+    for (const side of [-1, 0, 1]) out.push({ joint: 'head', anchor: [side * 0.036, 0.09, -0.1], rest: [side * 0.06, -1, -0.18],
+      n: 5, len: 0.09, stiff: 0.13, drag: 0.16, wind: 0.95, cone: 72, sway: 0.22,
+      seg: hairSeg, hit: ['head', ['chest', 0.035]] });
     for (const sx of [-1, 1]) {
       out.push({ joint: 'head', anchor: [sx * 1.5 * HV, 11 * HV, -10.5 * HV], rest: [sx * 0.3, -0.55, -1], n: 5, len: 0.08, stiff: 0.03, drag: 0.06, wind: 2.4, cone: 110, sway: 0.6, grav: 0.7,
         seg: ribbonSeg, hit: ['head', ['chest', 0.02]] });
     }
     out.push({ joint: 'head', anchor: [0.5 * HV, -3 * HV, 4.5 * HV], rest: [0, -1, 0.15], n: 2, len: 0.04, stiff: 0.35, drag: 0.2, wind: 0.3, cone: 35, face: [0, 0, 1],
       seg: goateeSeg, hit: [['chest', 0.01]] });
-    out.push({ joint: 'hips', anchor: [0.05, -0.02, 0.15], rest: [0.05, -1, 0.1], n: 3, len: 0.07, stiff: 0.05, drag: 0.12, wind: 0.5, face: [0, 0, 1], cone: 70, sway: 0.1,
+    out.push({ joint: 'hips', anchor: [0.045, -0.025, 0.155], rest: [0.08, -1, 0.06], n: 2, len: 0.065, stiff: 0.32, drag: 0.25, wind: 0.25, grav: 1.25, face: [0, 0, 1], cone: 48, sway: 0.03,
       seg: pendantSeg, hit: [['thighL', 0.03], ['thighR', 0.03]] });
     return out;
   },

@@ -67,12 +67,12 @@ export function moves() {
     dash: { frames: 66, cancel: 58, dodgeCancel: 40, steer: 3, lunge: [[0, 38, 6.4, 'lin'], [38, 48, 1.6]],
       hits: [{ f: [4, 36], every: 8, shape: 'arc', range: 2.3, ang: 130, dmg: 9, kb: 'push', force: 7, hitstop: 3 },
         { f: [44, 47], every: ONCE, shape: 'circle', range: 3.3, dmg: 20, kb: 'blow', force: 12, lift: 4, hitstop: 6, heavy: true }] },
-    jatk: { frames: 24, air: true, hover: 2.4, next: 'ja2', charge: 'jc', cancel: 12, dodgeCancel: 99, steer: 3,
-      hits: [{ f: [5, 8], sweep: 1, shape: 'arc', range: 3.0, ang: 160, dmg: 12, kb: 'flinch', force: 3, hitstop: 3, yMax: 4.5 }] },
-    ja2: { frames: 24, air: true, hover: 2.4, next: 'ja3', charge: 'jc', cancel: 12, dodgeCancel: 99, steer: 3,
-      hits: [{ f: [6, 9], sweep: -1, shape: 'arc', range: 3.0, ang: 180, dmg: 13, kb: 'push', force: 6, hitstop: 3, yMax: 4.5 }] },
-    ja3: { frames: 30, air: true, hover: 1.4, next: 'jatk', charge: 'jc', cancel: 18, dodgeCancel: 99, steer: 3,
-      hits: [{ f: [9, 12], every: ONCE, shape: 'circle', range: 3.2, dmg: 20, kb: 'blow', force: 10, lift: 2, hitstop: 6, yMax: 5 }] },
+    jatk: { frames: 22, air: true, hover: 2.55, next: 'ja2', charge: 'jc', cancel: 11, dodgeCancel: 99, steer: 4,
+      hits: [{ f: [6, 9], sweep: 1, shape: 'arc', range: 2.9, ang: 144, dmg: 12, kb: 'flinch', force: 3.2, hitstop: 3, yMax: 4.5 }] },
+    ja2: { frames: 26, air: true, hover: 2.3, next: 'ja3', charge: 'jc', cancel: 14, dodgeCancel: 99, steer: 4,
+      hits: [{ f: [8, 11], sweep: -1, shape: 'arc', range: 2.95, ang: 168, dmg: 13, kb: 'push', force: 6, hitstop: 3, yMax: 4.5 }] },
+    ja3: { frames: 33, air: true, hover: 1.6, next: 'jatk', charge: 'jc', cancel: 21, dodgeCancel: 99, steer: 4,
+      hits: [{ f: [12, 15], every: ONCE, shape: 'circle', range: 3.3, dmg: 21, kb: 'blow', force: 11, lift: 2.5, hitstop: 6, yMax: 5 }] },
     // (jc: his own hang / landing timing — anims/locomotion.js reads the kit's jc for the squash and glow)
     jc: { frames: 60, air: true, hover: 3, landFrame: 37, hang: [6, 33], plunge: [33, -82], cancel: 54, dodgeCancel: 42, steer: 12, armor: true,
       hits: [{ f: [37, 40], every: ONCE, shape: 'circle', range: 5, dmg: 26, kb: 'launch', force: 6, lift: 9, hitstop: 8, heavy: true, rocks: 10 }] },
@@ -127,24 +127,37 @@ const LOW = (h = 0.66, dz = 0.1) => ({ hips: [0, h, dz], hipsR: [24, -4, 0], spi
 // guard: right blade levelled at the foe, the left held low by the hip, tip forward
 const GR = [[0.08, -0.26, 0.36], [8, 18, 90], [-0.02, -0.4, 0.12], [-12, -28, -90]];
 const G = K(BODY(-14), ...GR);
-const AIRF = { fL: [0.16, 0.36, 0.2, -20, 10], fR: [-0.18, 0.3, -0.12, 20, -20] };
+const AIRF = { fL: [0.22, 0.46, 0.05, -32, 14], fR: [-0.18, 0.26, -0.24, 12, -26] };
+const SWITCH = { fL: [0.19, 0.27, 0.26, -8, 10], fR: [-0.23, 0.5, 0.04, -26, -18] };
 
 export function clips(A, M) {
   const { clipF, lungeAt: lz, body, ft, hit } = A;
   const step = (id, f, dz = 0) => ({ fL: [0.18, 0.08, lz(id, f) + 0.56 + dz, 0, 12], fR: [-0.24, 0.08, lz(id, f) - 0.36, 0, -50] });
   const wide = (id, f) => ({ fL: [0.32, 0.08, lz(id, f) + 0.34, 0, 25], fR: [-0.32, 0.08, lz(id, f) - 0.26, 0, -45] });
+  const orbitStep = (id, first, last, turn) => {
+    const tracks = [];
+    for (let f = first; f <= last; f += 3) {
+      const phase = (f - first) * Math.PI / 6;
+      const leg = (x, offset) => {
+        const q = phase + offset, lift = Math.max(0, Math.sin(q));
+        return body(id, f, turn(f), [x, 0.08 + lift * 0.12, 0.22 + Math.cos(q) * 0.11, -18 * lift, x > 0 ? 16 : -24]);
+      };
+      tracks.push(ft(f, leg(0.2, 0), leg(-0.23, Math.PI)));
+    }
+    return tracks;
+  };
   const out = {};
   /** Flat cut across the body by one blade (side +1 = the right blade right → left, −1 = the left blade left → right): the
    *  other blade kept in guard. f = [wind, strike, follow, cancel, end]. */
   const cut = (id, side, [w, s, e, c, F], air) => {
     const S = (r, rb, rest) => (side > 0 ? K(rest.b, r, rb, rest.l, rest.lb) : K(rest.b, rest.r, rest.rb, mx(r), mb(rb)));
     const other = side > 0 ? { l: [0.04, -0.36, 0.06], lb: [-30, -24, -90] } : { r: [-0.04, -0.36, 0.06], rb: [30, -24, 90] };
-    const ft0 = (f) => (air ? AIRF : f === s ? step(id, s) : {});
+    const ft0 = (f) => (air ? side > 0 ? SWITCH : AIRF : f === s ? step(id, s) : {});
     return clipF(id, [[0, air ? { ...G, hips: [0, 0.95, 0], ...AIRF } : G],
       [w, { ...S([-0.34, -0.06, -0.12], [-125, 8, 0], { ...other, b: BODY(-40 * side, 6, air ? 0.95 : 0.84) }), ...(air ? AIRF : {}) }, 'out'],
       [s, { ...S([0.04, -0.1, 0.46], [10, 2, 0], { ...other, b: BODY(-6 * side, 8, air ? 0.95 : 0.8, 0.08) }), ...ft0(s) }, 'snap'],
-      [e, { ...S([0.42, -0.16, 0.12], [118, -8, 0], { ...other, b: BODY(34 * side, 6, air ? 0.95 : 0.8, 0.1) }), ...(air ? AIRF : {}) }, 'out'],
-      [c, { ...S([0.38, -0.22, 0.14], [108, -16, 0], { ...other, b: BODY(28 * side, 5, air ? 0.95 : 0.82, 0.08) }), ...(air ? AIRF : {}) }, 'io'],
+      [e, { ...S([0.42, -0.16, 0.12], [118, -8, 0], { ...other, b: BODY(34 * side, 6, air ? 0.95 : 0.8, 0.1) }), ...(air ? SWITCH : {}) }, 'out'],
+      [c, { ...S([0.38, -0.22, 0.14], [108, -16, 0], { ...other, b: BODY(28 * side, 5, air ? 0.95 : 0.82, 0.08) }), ...(air ? SWITCH : {}) }, 'io'],
       [F, air ? { ...G, hips: [0, 0.95, 0.04], ...AIRF } : G]]);
   };
   // N1 right blade right → left · N2 left blade left → right
@@ -167,7 +180,7 @@ export function clips(A, M) {
     const keys = [[0, G], [s - 4, K(BODY(-34, 6, 0.8), [0.28, -0.12, 0.22], [96, 0, 0], [-0.26, -0.16, 0.24], [-96, 0, 0]), 'out']];
     for (let f = s - 2; f <= e + 2; f += 3) keys.push([f, WING(f), 'lin']);
     keys.push([c, { ...K(BODY(0, 6, 0.8, 0.04), [-0.4, -0.2, 0.12], [-80, -12, 0]), spin: 360 }, 'io'], [F, { ...G, spin: 360 }]);
-    for (let f = s, i = 0; f <= e + 2; f += 4, i++) keys.push(ft(f, i % 2 ? body('n4', f, sp(f), [0.24, 0.08, 0.26, 0, 15]) : null, i % 2 ? null : body('n4', f, sp(f), [-0.26, 0.08, -0.22, 0, -35])));
+    keys.push(...orbitStep('n4', s, e + 2, sp));
     keys.push(ft(F, [0.17, 0.08, 0.3 + lz('n4', F), 0, 15 + 360], [-0.2, 0.08, -0.26 + lz('n4', F), 0, -30 + 360]));
     out.n4 = clipF('n4', keys); }
   // N5 both blades scooped up from low in front
@@ -216,7 +229,7 @@ export function clips(A, M) {
     keys.push([s2 - 4, { ...K(BODY(0, 6, 0.84, 0.06), [0.28, -0.12, 0.22], [96, 0, 0], [-0.26, -0.16, 0.24], [-96, 0, 0]), spin: 1440 }, 'io'],
       [s2 + 1, { ...K(BODY(0, 10, 0.76, 0.12), [-0.44, -0.12, 0.12], [-96, 6, 0]), spin: 1440, ...wide('c3', s2 + 1) }, 'snap'],
       [c, { ...K(BODY(0, 8, 0.8, 0.1), [-0.42, -0.2, 0.14], [-84, -10, 0]), spin: 1440 }, 'io'], [F, { ...G, spin: 1440 }]);
-    for (let f = s + 2, i = 0; f <= e; f += 4, i++) keys.push(ft(f, i % 2 ? body('c3', f, sp(f), [0.22, 0.08, 0.22, 0, 15]) : null, i % 2 ? null : body('c3', f, sp(f), [-0.24, 0.08, -0.2, 0, -35])));
+    keys.push(...orbitStep('c3', s, e, sp));
     out.c3 = clipF('c3', keys); }
   // C4 twin thrusts, alternating right / left, then both together
   const TR = (b) => K(b, [0.16, -0.1, 0.48], [3, 2, 90], [-0.02, -0.22, 0.04], [-6, 6, -90]);
@@ -236,7 +249,7 @@ export function clips(A, M) {
   // C5 leap, blades raised crossed, both driven down crossed into the ground
   const PLANT = (b) => K(b, [0.24, -0.4, 0.34], [30, -62, 60]);
   { const [s] = hit('c5', 0), F = M.c5.frames, c = M.c5.cancel, L = M.c5.landFrame;
-    const air = (f, y = 0.55) => ({ fL: [0.2, y, lz('c5', f) + 0.25, -30, 15], fR: [-0.2, y - 0.1, lz('c5', f) - 0.15, -20, -30] });
+    const air = (f, y = 0.52) => ({ fL: [0.16, y + 0.05, lz('c5', f) + 0.3, -24, 11], fR: [-0.22, y - 0.12, lz('c5', f) - 0.22, 16, -23] });
     out.c5 = clipF('c5', [[0, G],
       [12, { ...K(LOW(0.64, 0), [-0.2, -0.3, -0.14], [-150, -20, 90]), ...wide('c5', 12) }, 'out'],
       [18, { ...CROSSUP(UPB(1.04, 0.1)), ...air(18) }, 'out'],
@@ -258,14 +271,18 @@ export function clips(A, M) {
     const RUN = K(BODY(0, 22, 0.8, 0.12), [-0.12, -0.36, -0.22], [-164, -14, 90]);
     const sp = (f) => 360 * Math.min(1, Math.max(0, (f - s2 + 3) / (e2 - s2 + 5)));
     const keys = [[0, G], [4, RUN, 'out'], [38, { ...RUN, hips: [0, 0.78, 0.14] }]];
-    for (let f = 5, j = 0; f < 40; f += 5, j ^= 1) {
-      const z = lz('dash', f) + 0.3;
-      keys.push(ft(f - 2.5, j ? null : [0.14, 0.3, z - 0.3, -20, 5], j ? [-0.14, 0.3, z - 0.3, -20, -5] : null), ft(f, j ? null : [0.14, 0.08, z, 0, 5], j ? [-0.14, 0.08, z, 0, -5] : null));
+    for (let f = 4; f < 39; f += 2) {
+      const phase = (f - 4) * Math.PI / 5;
+      const stride = (x, offset) => {
+        const q = phase + offset, swing = Math.cos(q);
+        return [x, 0.08 + 0.15 * Math.max(0, swing), lz('dash', f) + 0.22 + 0.38 * Math.sin(q), -18 * swing, x > 0 ? 12 : -20];
+      };
+      keys.push(ft(f, stride(0.18, 0), stride(-0.22, Math.PI)));
     }
     keys.push([s2 - 4, K(BODY(-34, 8, 0.8, 0.06), [0.28, -0.12, 0.22], [96, 0, 0], [-0.26, -0.16, 0.24], [-96, 0, 0]), 'in']);
     for (let f = s2 - 2; f <= e2 + 3; f += 3) keys.push([f, { ...K(BODY(0, 4, 0.8, 0.04), [-0.44, -0.1, 0.04], [-92, 2, 0]), spin: sp(f) }, 'lin']);
     keys.push([c, { ...K(BODY(0, 6, 0.82, 0.04), [-0.4, -0.2, 0.12], [-80, -12, 0]), spin: 360 }, 'io'], [F, { ...G, spin: 360 }]);
-    for (let f = s2, i = 0; f <= e2 + 3; f += 4, i++) keys.push(ft(f, i % 2 ? body('dash', f, sp(f), [0.24, 0.08, 0.26, 0, 15]) : null, i % 2 ? null : body('dash', f, sp(f), [-0.26, 0.08, -0.22, 0, -35])));
+    keys.push(...orbitStep('dash', s2, e2 + 3, sp));
     out.dash = clipF('dash', keys); }
   // air string: right cut · left cut · the falling X
   { const [s, e] = hit('jatk'); out.jatk = cut('jatk', 1, [s - 3, s, e + 1, M.jatk.cancel, M.jatk.frames], true); }
@@ -273,16 +290,17 @@ export function clips(A, M) {
   { const [s] = hit('ja3'), F = M.ja3.frames;
     out.ja3 = clipF('ja3', [[0, { ...G, hips: [0, 0.95, 0.04], ...AIRF }],
       [s - 3, { ...XUP(UPB(0.98)), ...AIRF }, 'out'],
-      [s + 1, { ...XMID(BODY(0, 16, 0.94, 0.1)), ...AIRF }, 'snap'],
-      [F, { ...XLOW(BODY(0, 16, 0.94, 0.12)), ...AIRF }]]); }
+      [s, { ...XMID(BODY(0, 16, 0.94, 0.1)), ...SWITCH }, 'snap'],
+      [F, { ...XLOW(BODY(0, 16, 0.94, 0.12)), ...SWITCH }]]); }
   // jump charge: blades crossed overhead through the hang, the plunge, the X cut landing
   { const L = M.jc.landFrame, F = M.jc.frames, Dn = M.jc.plunge[0], c = M.jc.cancel;
-    const air = (y) => ({ fL: [0.16, y, 0.14, -30, 10], fR: [-0.18, y - 0.08, -0.12, 20, -20] });
-    const land = { ...XLOW(LOW(0.56, 0.14)), fL: [0.32, 0.08, 0.34, 0, 25], fR: [-0.32, 0.08, -0.26, 0, -45] };
-    out.jc = clipF('jc', [[0, { ...G, hips: [0, 0.95, 0], ...air(0.36) }],
-      [5, { ...CROSSUP(UPB(1.0, 0.04)), ...air(0.5) }, 'out'],
-      [Dn - 1, { ...CROSSUP(UPB(1.0, 0.04)), ...air(0.5) }],
-      [L - 1, { ...K(UPB(0.96, 0.14), [0.14, 0.24, 0.28], [30, 20, 60]), ...air(0.4) }, 'in'],
+    const air = (phase) => ({ fL: [0.22, 0.38 + phase * 0.12, 0.12 - phase * 0.18, -28 + phase * 12, 10],
+      fR: [-0.18, 0.26 + phase * 0.06, -0.24 + phase * 0.28, 14 - phase * 8, -20] });
+    const land = { ...XLOW(LOW(0.6, 0.1)), fL: [0.18, 0.08, 0.12, 0, 8], fR: [-0.26, 0.08, 0.43, 0, -12] };
+    out.jc = clipF('jc', [[0, { ...G, hips: [0, 0.95, 0], ...air(0) }],
+      [5, { ...CROSSUP(UPB(1.0, 0.04)), ...air(0.6) }, 'out'],
+      [Dn - 1, { ...CROSSUP(UPB(1.0, 0.04)), ...air(1) }],
+      [L - 1, { ...K(UPB(0.96, 0.14), [0.14, 0.24, 0.28], [30, 20, 60]), ...SWITCH }, 'in'],
       [L, land, 'snap'],
       [c, { ...land, ...XLOW(LOW(0.62, 0.12)) }, 'io'], [F, G]]); }
 
@@ -293,12 +311,12 @@ export function clips(A, M) {
   Object.assign(out, locoClips({
     idle: IDLE,
     breath: { hips: [0, 0.872, 0], chest: [-4, -2, 0], head: [-4, 4, 0] },
-    takeoff: WINGS({ hips: [0, 0.98, 0], hipsR: [-6, -8, 0], chest: [-6, 4, 0], head: [-6, 0, 0] }, -0.2),
-    apex: CROSSUP({ hips: [0, 0.95, 0], hipsR: [-8, 0, 0], spine: [-4, 0, 0], chest: [-10, 0, 0], head: [-8, 0, 0] }),
-    fall: WINGS({ hips: [0, 0.95, 0], hipsR: [-10, 0, 0], spine: [-4, 0, 0], chest: [-8, 0, 0], head: [12, 0, 0] }, 0.02),
-    land: { ...XLOW(LOW(0.62, 0.1)), footL: [0.32, 0.08, 0.34, 0, 25], footR: [-0.32, 0.08, -0.26, 0, -45] },
-    hurt: K({ hips: [0, 0.82, -0.12], hipsR: [-16, -20, 6], spine: [-12, 0, 0], chest: [-12, 0, 0], head: [-20, 0, 0] },
-      [-0.14, -0.3, -0.04], [-60, -30, 90], [0.2, -0.2, 0.0], [70, -10, -90]),
+    takeoff: K(BODY(-6, 9, 0.9, 0.04), [0.08, -0.24, 0.28], [10, 28, 80]),
+    apex: K(BODY(10, -2, 0.96, 0.015), [0.12, 0.08, 0.27], [-20, 48, 70]),
+    fall: K(BODY(-12, 8, 0.92, 0.06), [0.22, -0.14, 0.31], [32, 12, 60]),
+    land: { ...XLOW(LOW(0.64, 0.08)), footL: [0.18, 0.08, 0.12, 0, 8], footR: [-0.26, 0.08, 0.43, 0, -12] },
+    hurt: { ...K({ hips: [0.015, 0.8, -0.1], hipsR: [-8, 12, -4], spine: [-4, 9, 0], chest: [-7, 11, -3], head: [-10, -8, -2] },
+      [0.18, -0.05, 0.27], [-36, 35, 70], [-0.15, -0.05, 0.29], [36, 29, -70]), footL: [0.18, 0.08, 0.05, 0, 8], footR: [-0.24, 0.08, -0.42, 0, -14] },
   }));
   return out;
 }

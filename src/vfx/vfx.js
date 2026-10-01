@@ -481,7 +481,7 @@ const WALL_FS = /* glsl */`
     // sparse bright ribbons of pressure over a faint skirt (a solid band read as a fog wall under bloom)
     float streak = 0.18 + 0.82 * pow(max(0.0, sin(th * 17.0 + uSeed * 7.0) * sin(th * 5.0 - uSeed * 3.0)), 2.0);
     float top = 0.4 + 0.6 * fract(sin(floor(th * 10.0) * 12.9 + uSeed) * 437.5);   // ragged, voxel-stepped crown
-    float prof = pow(1.0 - y, 2.6) * (1.0 - smoothstep(top * 0.85, top, y)) + exp(-y * 30.0) * 0.6;
+    float prof = pow(max(0.0, 1.0 - y), 2.6) * (1.0 - smoothstep(top * 0.85, top, y)) + exp(-y * 30.0) * 0.6;   // MSAA can extrapolate UV past the wall's top edge
     float fade = (1.0 - uU) * (1.0 - uU);
     vec3 col = uColor * prof * streak * fade * vNear;
     gl_FragColor = vec4(col, 1.0);

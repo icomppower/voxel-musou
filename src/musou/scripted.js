@@ -53,6 +53,23 @@ export function createScriptedMusou(game, S) {
   const push = [];
   let startMusou = 0, waveSeq = 0;
 
+  // Compile the kit's action into fixed-frame commands once. Runtime only reads the current frame's pose and events.
+  const action = Array.from({ length: MUSOU.end }, () => ({ distance: 0, turn: 0, blows: [], waves: [], effects: [] }));
+  for (const [begin, finish, move, from, to] of S.seq) for (let f = begin; f < finish && f < action.length; f++) {
+    action[f].pose = [move, from + (to - from) * (f - begin) / (finish - begin)];
+  }
+  for (const [begin, finish, distance] of S.travel || []) for (let f = begin; f < finish && f < action.length; f++) {
+    action[f].distance += distance / (finish - begin);
+  }
+  for (const [frame, degrees] of S.turn || []) action[frame].turn += degrees * D2R;
+  for (const [index, [start, hit, offset = 0, repeat = 0, finish = start]] of S.hits.entries()) {
+    for (let frame = start; frame <= finish && frame < action.length; frame += repeat || action.length) {
+      action[frame].blows.push({ hit, offset, repeat: repeat > 0, key: -(index + 1) * action.length - frame });
+    }
+  }
+  for (const [frame, hit] of S.proj || []) action[frame].waves.push(hit);
+  for (const [frame, ...effect] of S.fx || []) action[frame].effects.push(effect);
+
   mu.reset = () => { mu.active = false; mu.t = 0; mu.wasReady = false; mu.waveR = 0; mu.side = 1; push.length = 0; mu.waves.length = 0; };
   /** Contact frame [left, up, fwd] → world (the view's payoff light). */
   mu.toWorld = (p, out) => {
@@ -139,20 +156,20 @@ export function createScriptedMusou(game, S) {
   };
 
   function run(h, t, inp) {
-    const seg = S.seq.find(([a, b]) => t >= a && t < b) || S.seq[S.seq.length - 1], [a, b, id, t0, t1] = seg;
-    h.musouClip = id; h.musouT = t0 + (t1 - t0) * Math.min(1, (t - a) / (b - a));
-    const [dx, dz, mag] = stickDir(inp, mu.yaw0);
-    if (mag) turnToward(h, Math.atan2(dx, dz), 1.2 * DT);
-    for (const [f, deg] of S.turn || []) if (f === t) h.yaw += deg * D2R;
-    for (const [f0, f1, m] of S.travel || []) if (t >= f0 && t < f1) { const v = m / (f1 - f0); h.x += Math.sin(h.yaw) * v; h.z += Math.cos(h.yaw) * v; }
+    const frame = action[t];
+    if (frame.pose) [h.musouClip, h.musouT] = frame.pose;
+    const direction = stickDir(inp, mu.yaw0);
+    if (direction[2] > 0) turnToward(h, Math.atan2(direction[0], direction[1]), MUSOU.chaseTurn * DT * 0.5);
+    h.yaw += frame.turn;
     const sn = Math.sin(h.yaw), cs = Math.cos(h.yaw);
-    S.hits.forEach(([f, hit, fwd = 0, every = 0, until = f], i) => {
-      if (t < f || t > until || (every ? (t - f) % every : t !== f)) return;
-      const x = h.x + sn * fwd, z = h.z + cs * fwd;
-      if (hitAt(hit, x, z, h.yaw, -4000 - i * 97 - (every ? t % 60 : 0), !!every)) emit('musou:hit', { x, y: 1.2, z, stage: 'rush', yaw: h.yaw, n: t - MUSOU.contact });
-    });
-    for (const [f, hit] of S.proj || []) if (f === t) mu.wave(hit, 'musou');
-    for (const [f, kind, r, fwd] of S.fx || []) if (f === t) fxAt(kind, r, fwd);
+    h.x += sn * frame.distance; h.z += cs * frame.distance;
+    for (const blow of frame.blows) {
+      const x = h.x + sn * blow.offset, z = h.z + cs * blow.offset;
+      const count = hitAt(blow.hit, x, z, h.yaw, blow.key, blow.repeat);
+      if (count) emit('musou:hit', { x, y: 1.2, z, stage: 'rush', yaw: h.yaw, n: t - MUSOU.contact });
+    }
+    frame.waves.forEach((hit) => mu.wave(hit, 'musou'));
+    frame.effects.forEach(([kind, radius, offset]) => fxAt(kind, radius, offset));
     if (t === MUSOU.contact) {                                           // CONTACT: the payoff anchor, once
       mu.ax = h.x; mu.az = h.z; mu.ayaw = h.yaw;
       emit('musou:hit', { x: h.x + sn * 2.5, y: 1.3, z: h.z + cs * 2.5, stage: 'contact', yaw: h.yaw, n: 0 });
@@ -170,10 +187,10 @@ export function createScriptedMusou(game, S) {
       const u = Math.min(1, (t - M.closeup) / (M.pullback - M.closeup)), v = Math.max(0, (t - M.pullback) / (M.chase - M.pullback));
       Object.assign(o, { id: 2, yaw: offSun(mu.yaw0 + Math.PI), dist: 3.1 - 0.3 * smooth(u) + 1.2 * v * v, pitch: 0.2 + 0.08 * v, fov: 30 + 12 * v,
         height: 1.62 - 0.35 * v });
-    } else if (t < M.finisher - 10) {                      // the action: three-quarter behind, off his shoulder, easing wider
-      const u = smooth((t - M.chase) / 24);
-      Object.assign(o, { id: 5, yaw: offSun(h.yaw + mu.side * (0.25 + 0.5 * u)), dist: 3.4 + 3.4 * u, pitch: 0.14 + 0.08 * u, fov: 50 + 6 * u,
-        height: 1.15 + 0.35 * u, shake: 0.5 });
+    } else if (t < M.finisher - 10) {                      // a stable side view lets the full weapon swing cross the frame
+      const progress = (t - M.chase) / (M.finisher - 10 - M.chase);
+      Object.assign(o, { id: 5, yaw: offSun(mu.yaw0 + mu.side * Math.PI / 2), dist: 6.5 + progress * 1.2,
+        pitch: 0.3, fov: 48, height: 1.1, side: 0.4 * mu.side, shake: 0.4 });
     } else {                                               // finisher: wide, a touch high, behind him (the whole ring wave)
       const u = smooth((t - M.finisher + 10) / (M.end - M.finisher + 10));
       Object.assign(o, { id: 4, yaw: offSun(h.yaw + mu.side * 0.32), dist: 8.2 + 1.3 * u, pitch: 0.08 + 0.06 * u, fov: 58 - 4 * u,

@@ -138,7 +138,8 @@ function head() {
     ...symH(2, 5, 7, 9, 5, 6, C.scl), ...symH(2, 4, 7, 9, 5, 6, C.iris), ...symH(2, 3, 7, 9, 5, 6, C.eye),
     ...symH(2, 5, 9, 10, 5, 6, C.skinD),
     // straight nose, a thin mouth
-    B([0, 4, 6], [1, 9, 7], C.skin), B([-1, 4, 6], [2, 5, 7], C.skin), P([-1, 4, 6], [0, 5, 7], C.skinD), P([1, 4, 6], [2, 5, 7], C.skinD),
+    B([-1, 6, 6], [2, 9, 8], C.skinH), B([0, 4, 7], [2, 6, 9], C.skin), P([-1, 5, 7], [0, 8, 8], C.skinD),
+    B([-1, 4, 7], [0, 6, 8], C.skin), B([2, 4, 7], [3, 6, 8], C.skin),
     P([-2, 2, 5], [3, 3, 6], C.lip), P([-1, 2, 5], [2, 3, 6], C.mouth),
     // thin moustache drooping at the ends, a short chin tuft
     B([-2, 3, 6], [3, 4, 7], C.hair), B([-3, 2, 6], [-2, 4, 7], C.hair), B([3, 2, 6], [4, 4, 7], C.hair),
@@ -204,9 +205,9 @@ export const LIUBEI_DEF = {
     return [
       { joint: 'chest', anchor: [0, 0.235, -0.16], rest: [0, -1, 0.12], n: 4, len: 0.125, stiff: 0.16, drag: 0.22, wind: 1.1, cone: 80, sway: 0.2,
         seg: cape, hit: ['chest', 'hips', ...legs] },
-      { joint: 'hips', anchor: [0, -0.01, 0.14], rest: [0, -1, 0.1], n: 3, len: 0.115, stiff: 0.12, drag: 0.14, wind: 0.5, face: [0, 0, 1], cone: 70, sway: 0.08,
+      { joint: 'hips', anchor: [0, -0.01, 0.14], rest: [0, -1, 0.1], n: 3, len: 0.115, stiff: 0.12, drag: 0.14, wind: 0.4, face: [0, 0, 1], cone: 70, sway: 0.08,
         seg: panel, hit: legs },
-      { joint: 'hips', anchor: [0, -0.01, -0.14], rest: [0, -1, -0.12], n: 3, len: 0.115, stiff: 0.12, drag: 0.14, wind: 0.7, face: [0, 0, -1], cone: 70, sway: 0.1,
+      { joint: 'hips', anchor: [0, -0.01, -0.14], rest: [0, -1, -0.12], n: 3, len: 0.115, stiff: 0.12, drag: 0.14, wind: 0.4, face: [0, 0, -1], cone: 70, sway: 0.08,
         seg: panel, hit: ['hips', ...legs] },
       ...[-1, 1].map((sx) => ({ joint: 'head', anchor: [sx * 2 * HV, 17 * HV, -4 * HV], rest: [sx * 0.3, -0.6, -1], n: 5, len: 0.072,
         stiff: 0.03, drag: 0.06, wind: 2.4, cone: 105, sway: 0.6, seg: ribbon, hit: ['head', ['chest', 0.02]] })),

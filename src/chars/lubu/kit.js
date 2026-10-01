@@ -43,6 +43,6 @@ LUBU_KIT.bossAttacks = [
   { id: 'thrust', clip: 'c3', windup: 30, active: 16, recover: 28, every: 4, dmg: 40, shape: 'lane', w: 2.4, len: 8.5, lunge: 5.4,
     range: [2.4, 9], weight: 3 },
   { id: 'leap', clip: 'c5', t1: 0.7, windup: 24, active: 30, recover: 34, dmg: 50, shape: 'leap', r: 4.6, len: 13, h: 3, range: [5.5, 14], weight: 2 },
-  { id: 'storm', clip: 'c6', f: [20, 82], t1: 0.86, windup: 44, active: 44, recover: 30, every: 11, dmg: 30, shape: 'circle', r: 6.4, range: [0, 6], weight: 1.5 },
+  { id: 'storm', clip: 'c6', f: [24, 85], t1: 0.9, windup: 44, active: 44, recover: 30, every: 11, dmg: 30, shape: 'circle', r: 6.4, range: [0, 6], weight: 1.5 },
 ];
 LUBU_KIT.bossPoise = 420;

@@ -20,21 +20,17 @@ import { ground } from '../world/map.js';
 
 const k3 = (c, k) => [c[0] * k, c[1] * k, c[2] * k];
 
-/** Upright crescent in the local XY plane (unit outer radius, middle at y 0), horns swept back toward −Z; vertex colour
- *  bright on the outer edge. */
-function crescentGeo(n = 22) {
-  const pos = [], col = [], idx = [];
-  for (let i = 0; i <= n; i++) {
-    const u = i / n, a = (u - 0.5) * 2.3, w = Math.sin(u * Math.PI), s = Math.sin(a), c = Math.cos(a);
-    const r1 = 1 - 0.32 * w, back = -(1 - c) * 0.85;
-    pos.push(s, c - 1, back, s * r1, c * r1 - 1 - 0.06 * w, back - 0.08 * w);
-    col.push(w, w, w, 0.15 * w, 0.15 * w, 0.15 * w);
-    if (i < n) { const b = i * 2; idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2); }
+/** A flat brushstroke arc: two quadratic curves share pointed tips, with a luminous spine and dim tail. */
+function crescentGeo() {
+  const ink = new THREE.Shape();
+  ink.moveTo(-1, -0.55); ink.quadraticCurveTo(0, 1.35, 1, -0.55);
+  ink.quadraticCurveTo(0, 0.4, -1, -0.55);
+  const g = new THREE.ShapeGeometry(ink, 16), positions = g.attributes.position, colors = [];
+  for (let i = 0; i < positions.count; i++) {
+    const light = Math.max(0.15, 1 - Math.abs(positions.getX(i)));
+    colors.push(light, light, light);
   }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.setIndex(idx);
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   return g;
 }
 /** Roar band: a strip of the unit circle round the local origin (±0.24 rad about +Z), 1 m tall, bright at the ground. */
@@ -98,32 +94,37 @@ export function createKitView(parent, game, camera, { sig, blade }) {
     if (!hit) return;
     const sx = Math.sin(e.yaw), sz = Math.cos(e.yaw);
     if (hit.roar) roarFx(h.x, h.z, hit.range || 7, e.move === 'c6');
-    if (hit.beam) {                                    // light streak down the hit line, sparks along it
-      const L = hit.len || 8, x = h.x + sx * 0.6, z = h.z + sz * 0.6, y = h.y + 1.15;
-      fx.streak(x, y, z, sx, 0, sz, L, (hit.width || 1.6) * 0.6, 0.4, sig.beam);
-      for (let k = 1; k <= 4; k++) fx.embers(x + sx * L * k / 4, y - 0.5, z + sz * L * k / 4, 3, 0.4, sig.beam);
-      fx.star(x, y, z, 1.4, 0.2, k3(sig.core, 1.2)); fx.flash(0.08);
+    if (hit.beam) {                                    // a split lance of light, ending in a target flare
+      const reach = hit.len || 8, half = (hit.width || 1.6) * 0.25;
+      for (const side of [-1, 1]) fx.streak(h.x + sz * half * side, h.y + 1.3, h.z - sx * half * side,
+        sx, 0, sz, reach, half, 0.3, side < 0 ? sig.beam : sig.core);
+      fx.star(h.x + sx * reach, 1.1, h.z + sz * reach, 1.7, 0.28, sig.beam);
+      fx.embers(h.x, h.y + 1.3, h.z, 8, 0.4, sig.core);
     }
-    if (hit.rain) {                                    // light columns striking a fan ahead
+    if (hit.rain) {                                    // two staggered rows march forward across the attack fan
       const R = hit.range || 5;
       for (let i = 0; i < hit.rain; i++) {
-        const a = e.yaw + (i / hit.rain - 0.5) * 2.2, d = R * (0.35 + 0.6 * ((i * 0.618) % 1)), x = h.x + Math.sin(a) * d, z = h.z + Math.cos(a) * d;
-        fx.columns(x, z, 1, 0, 9, 1.2, 0.45, sig.beam, 0); fx.ring(x, z, 1.4, 0.35, sig.beam); fx.star(x, 0.4, z, 1.2, 0.2, sig.core);
+        const lateral = ((i / Math.max(1, hit.rain - 1)) * 2 - 1) * R * 0.65;
+        const advance = R * (i % 2 ? 0.8 : 0.45), x = h.x + sx * advance + sz * lateral, z = h.z + sz * advance - sx * lateral;
+        fx.columns(x, z, 1, 0, 6, 0.8, 0.5, sig.beam, 0);
+        fx.ring(x, z, 0.75, 0.5, sig.core);
       }
-      fx.dustRing(h.x, h.z, 20, 0.6, R * 1.4, 0.6, 0.5); fx.flash(0.12);
+      fx.rayBurst(h.x, 0.2, h.z, hit.rain, R * 0.5, sig.wave, [0, 0.08], 0.35, 0.3);
     }
   });
   on('musou:fx', (e) => {
     const { x, z, r } = e;
     if (e.kind === 'roar') roarFx(x, z, r, true);
     else if (e.kind === 'slam') {
-      fx.ring(x, z, r, 0.5, sig.wave); fx.ring(x, z, r * 0.6, 0.35, sig.core);
-      fx.crack(x, z, Math.min(6, r * 0.5), k3(sig.roar, 1.3)); fx.wall(x, z, r * 0.9, 2.4, 0.5, k3(sig.roar, 0.5));
-      fx.dustRing(x, z, 34, 0.6, r * 1.8, 0.75, 0.6); fx.dustColumn(x, z, 14, 0.6, 2.4, 3.2, [0.8, 1.2], 0.55);
-      fx.rocks(x, z, 20, 3, 0.14, 0.36, [5, 10], 4); fx.star(x, 0.6, z, 2.2, 0.25, sig.core); fx.flash(0.16);
+      fx.wall(x, z, r, 0.8, 0.45, sig.wave);
+      for (const side of [-1, 1]) fx.crack(x + Math.cos(e.yaw) * side * 1.2, z - Math.sin(e.yaw) * side * 1.2,
+        Math.min(5, r * 0.6), sig.roar, 2);
+      fx.rocks(x, z, 18, r * 0.4, 0.12, 0.28, [4, 8], 3.5);
+      fx.dustColumn(x, z, 18, 0.7, r * 0.4, 2, [1, 1.4], 0.6);
     } else if (e.kind === 'rocks') {
-      fx.rocks(x, z, 26, 3.4, 0.18, 0.44, [5.5, 11], 3.4); fx.dustColumn(x, z, 20, 1.2, 3.6, 4.6, [0.9, 1.3], 0.6);
-      fx.dustRing(x, z, 26, 0.8, r * 1.6, 0.7, 0.6); fx.flash(0.14);
+      fx.rocks(x, z, 12, r * 0.65, 0.3, 0.6, [3, 6], 5);
+      fx.crack(x, z, r * 0.8, sig.roar, 1.8);
+      fx.wall(x, z, r, 0.5, 0.6, k3(sig.wave, 0.45));
     } else if (e.kind === 'crack') {
       fx.crack(x, z, r, k3(sig.roar, 1.4), 3.6); fx.rocks(x, z, 12, r * 0.6, 0.12, 0.3, [3, 7], 3); fx.dustRing(x, z, 18, 0.4, r, 0.6, 0.5);
     } else if (e.kind === 'beams') {
@@ -131,9 +132,11 @@ export function createKitView(parent, game, camera, { sig, blade }) {
       for (let i = 0; i < n; i++) { const a = e.yaw + (i / n) * 6.283; fx.streak(x, 1.2, z, Math.sin(a), 0, Math.cos(a), 10, 0.7, 0.45, sig.beam); }
       fx.star(x, 1.3, z, 1.6, 0.25, sig.core); fx.ring(x, z, 6, 0.5, sig.beam);
     } else if (e.kind === 'rain') {
-      fx.columns(x, z, 1, 0, 9, 1.4, 0.4, sig.beam, 0); fx.ring(x, z, r, 0.35, sig.beam); fx.dustRing(x, z, 10, 0.4, r * 1.6, 0.5, 0.5); fx.star(x, 0.4, z, 1.4, 0.2, sig.core);
+      fx.columns(x, z, 3, r * 0.5, 5, 0.65, 0.6, sig.beam, 0);
+      fx.rayBurst(x, 0.4, z, 6, r, sig.core, [0.05, 0.3], 0.25, 0.5);
     } else if (e.kind === 'aura') {
-      fx.ring(x, z, r, 0.6, k3(sig.wave, 0.9)); fx.embers(x, 0.6, z, 30, 1.6, sig.wave); fx.star(x, 1.4, z, 2, 0.4, k3(sig.core, 0.8));
+      fx.wall(x, z, r * 0.75, 1.5, 0.7, k3(sig.wave, 0.55));
+      fx.rayBurst(x, 0.8, z, 12, r * 0.7, sig.core, [0.2, 0.65], 0.35, 0.4);
     }
   });
   on('wave:launch', (e) => fx.star(e.x + Math.sin(e.yaw) * 0.8, e.y, e.z + Math.cos(e.yaw) * 0.8, e.kind === 'roar' ? 1.8 : 0.9, 0.14, sig.core));
@@ -167,8 +170,8 @@ export function createKitView(parent, game, camera, { sig, blade }) {
         p.g.position.set(w.x, w.y + gy, w.z);
         p.g.rotation.set(0, w.yaw, w.kind === 'wind' ? ((w.key & 1) ? 0.7 : -0.7) + Math.sin(t * 11 + i) * 0.08 : 0);
         p.g.scale.setScalar(s);
-        const toward = (Math.sin(w.yaw) * (cam.x - w.x) + Math.cos(w.yaw) * (cam.z - w.z)) / (Math.hypot(cam.x - w.x, cam.z - w.z) || 1);
-        a *= (toward > 0.35 ? 0.15 : 1) * (w.kind === 'ring' ? 0.55 : 1);
+        // The near-lens fade already prevents a wave covering the camera; ring volleys have a lower intensity.
+        a *= w.kind === 'ring' ? 0.55 : 1;
         p.outer.material.opacity = p.core.material.opacity = a;
         if (w.kind !== 'ring' && ((game.frame + i) & 1)) fx.embers(w.x, w.y - 0.4, w.z, 1, w.r * 0.5, k3(sig.wave, 0.9));
       }

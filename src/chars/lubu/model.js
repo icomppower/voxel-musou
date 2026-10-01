@@ -231,27 +231,36 @@ const feather = (i, n) => {
     return md(-y + i * 8, 8) < 2 ? C.feaD : X > w - 1.5 ? C.feaL : C.fea;
   })], FV, { off: [0, 0, -0.5], jitter: 0.04, ao: 0.12 });
 };
-const mane = (i, n) => {                                     // the black mane: broad, tapering, split tips
-  const w = Math.max(3, Math.round(7 - (i * 3.5) / (n - 1))), tip = i === n - 1;
-  return vox([B([-w, -6, -2], [w, 0, 2], (x, y, z) => {
-    if (i >= n - 2 && md(x, 3) === 0 && y < -2) return null;
-    if (tip && hash01(x, y, z) < 0.4) return null;
-    return md(x * 2 + i + z, 5) === 0 ? C.hairH : C.hair;
-  })], FV, { off: [0, 0, -0.5], jitter: 0.05, ao: 0.25 });
+// Three narrow braids: interlocking highlights, no slab of clipped hair across the whole back.
+const mane = (i, n, side) => {
+  const strands = [], width = Math.max(1, Math.round(3 - 1.4 * i / n));
+  for (let y = -8; y < 0; y++) {
+    const x = Math.round(Math.sin((i * 8 - y) * 0.62 + side) * 1.2);
+    strands.push(B([x - width, y, -1], [x + width + 1, y + 1, 2], (xx) => md(xx - y + i, 4) === 1 ? C.hairH : C.hair));
+  }
+  return vox(strands, FV, { jitter: 0.02, ao: 0.22 });
 };
-/** 百花袍 cape: red brocade (outside), dark red lining, a gold hem band on the last segment, widening as it falls. */
-const cape = (i, n) => {
-  const w = Math.round(13 + i * 1.8), last = i === n - 1, cut = (x) => last && -12 + 3 * hash01(x, i, 3);
-  return vox([
-    B([-w, -14, 0], [w, 0, 1], (x, y, z) => (last && y < cut(x) ? null : last && y < -8 ? (y === -9 ? C.goldL : C.gold)
-      : x <= -w + 1 || x >= w - 2 ? C.goldD : brocade(x, y - i * 14, z))),
-    B([-w + 1, -14, -1], [w - 1, 0, 0], (x, y) => (last && y < cut(x) ? null : C.redD)),
-  ], FV, { off: [0, 0, -0.5], jitter: 0.04, ao: 0.18 });
+// The brocade cape falls as two independently moving outer tails with a scalloped gold hem.
+const cape = (i, n, side) => {
+  const cloth = [], width = 16 + Math.round(6 * i / (n - 1));
+  for (let y = -13; y < 0; y++) for (let x = 0; x < width; x++) {
+    const hem = -11 + Math.round(1.5 * Math.cos(x * Math.PI * 2 / width));
+    if (i === n - 1 && y < hem) continue;
+    const xx = side < 0 ? -x - 1 : x;
+    const c = x < 2 || x > width - 3 || (i === n - 1 && y < hem + 2) ? C.gold : brocade(xx, y - i * 13, 1);
+    cloth.push(B([xx, y, 0], [xx + 1, y + 1, 2], c), B([xx, y, -1], [xx + 1, y + 1, 0], C.redD));
+  }
+  return vox(cloth, FV, { jitter: 0.02, ao: 0.16 });
 };
-const apron = (i, n) => vox([B([-7, -11, 0], [7, 0, 1], (x, y, z) => {
-  if (i === n - 1 && y < -9) return hash01(x, i, 5) < 0.3 ? null : C.gold;
-  return x <= -6 || x >= 6 ? C.gold : brocade(x, y - i * 11, z);
-}), B([-6, -11, -1], [6, 0, 0], C.redD)], FV, { off: [0, 0, -0.5], jitter: 0.04, ao: 0.2 });
+const apron = (i, n, side) => {
+  const pennant = [];
+  for (let row = 0; row < 11; row++) {
+    const w = i === n - 1 ? Math.max(1, 5 - Math.floor(row / 2)) : 5;
+    for (let x = -w; x <= w; x++) pennant.push(B([x, -row - 1, 0], [x + 1, -row, 2],
+      Math.abs(x) >= w - 1 || row === 0 ? C.gold : brocade(x + side * 17, -row - i * 11, 1)));
+  }
+  return vox(pennant, FV, { jitter: 0.02, ao: 0.19 });
+};
 const cord = (i, n) => vox([B([-1, -7, -1], [1, 0, 1], (x, y) => (i === n - 1 && y < -4 ? C.goldL : md(y, 3) === 0 ? C.purpleD : C.purple))],
   FV, { jitter: 0.04, ao: 0.15 });
 const strand = (i, n) => {                                  // the halberd's red tassel
@@ -269,29 +278,30 @@ export const LUBU_DEF = {
   chains() {
     const out = [];
     // the cape from the rings behind the shoulders; the brocade apron from the lion belt; purple cord ends at the back
-    out.push({ joint: 'chest', anchor: [0, 0.22, -0.17], rest: [0, -1, -0.12], n: 7, len: 0.18, stiff: 0.15, drag: 0.2, wind: 1.3, cone: 80, sway: 0.24,
-      seg: cape, hit: ['chest', 'hips', 'thighL', 'thighR', 'kneeL', 'kneeR'] });
-    out.push({ joint: 'hips', anchor: [0, -0.1, 0.16], rest: [0, -1, 0.12], n: 4, len: 0.13, stiff: 0.12, drag: 0.18, wind: 0.5, face: [0, 0, 1], cone: 70, sway: 0.1,
-      seg: apron, hit: [['thighL', 0.04], ['thighR', 0.04], ['kneeL', 0.04], ['kneeR', 0.04]] });
+    for (const side of [-1, 1]) out.push({ joint: 'chest', anchor: [side * 0.1, 0.19, -0.16], rest: [side * 0.08, -1, -0.18],
+      n: 7, len: 0.17, stiff: 0.18, drag: 0.21, wind: 1.1, cone: 75, sway: 0.18, face: [0, 0, -1],
+      seg: (i, n) => cape(i, n, side), hit: ['chest', 'hips', 'thighL', 'thighR', 'kneeL', 'kneeR'] });
+    for (const side of [-1, 1]) out.push({ joint: 'hips', anchor: [side * 0.125, -0.045, 0.17], rest: [side * 0.06, -1, 0.14],
+      n: 3, len: 0.15, stiff: 0.09, drag: 0.17, wind: 0.35, face: [0, 0, 1], cone: 62, sway: 0.06,
+      seg: (i, n) => apron(i, n, side), hit: [['thighL', 0.025], ['thighR', 0.025], ['kneeL', 0.025], ['kneeR', 0.025]] });
     for (const sx of [-1, 1]) {
       out.push({ joint: 'spine', anchor: [sx * 0.06, 0.15, -0.13], rest: [sx * 0.2, -1, -0.35], n: 4, len: 0.08, stiff: 0.08, drag: 0.14, wind: 1, cone: 90, sway: 0.2,
         face: [0, 0, -1], seg: cord, hit: ['hips', ['thighL', 0.02], ['thighR', 0.02]] });
     }
-    // the mane from under the crown
-    out.push({ joint: 'head', anchor: [0, 11 * HV, -8 * HV], rest: [0, -1, -0.35], n: 6, len: 0.075, stiff: 0.1, drag: 0.14, wind: 1.4, cone: 85, sway: 0.3,
-      seg: mane, hit: ['head', ['chest', 0.05]] });
+    // Three braids hang separately below the crown.
+    for (const side of [-1, 0, 1]) out.push({ joint: 'head', anchor: [side * 0.027, 0.13, -0.096], rest: [side * 0.1, -1, -0.3],
+      n: 5, len: 0.08, stiff: 0.12, drag: 0.16, wind: 0.9, face: [0, 0, -1], cone: 70, sway: 0.19,
+      seg: (i, n) => mane(i, n, side), hit: ['head', ['chest', 0.03]] });
     // 雉雞翎: two long feathers rising from the back of the crown, splaying out, arcing back over him — light (grav < 1),
     // springy, streaming in the wind
     for (const sx of [-1, 1]) {
       out.push({ joint: 'head', anchor: [sx * 4 * HV, 22 * HV, -4.5 * HV], rest: [sx * 0.42, 1, -0.45], n: 13, len: 0.092,
         stiff: 0.14, drag: 0.09, grav: 0.45, wind: 0.8, cone: 42, sway: 0.26, face: [0, 0, 1], seg: feather });
     }
-    // the halberd's red tassel under the beast mouth
-    for (let k = 0; k < 5; k++) {
-      const a = k * 1.2566, ox = Math.cos(a) * 0.016, oy = Math.sin(a) * 0.016;
-      out.push({ joint: 'weapon', anchor: [ox, oy, 1.41], rest: [ox * 12, oy * 4 - 1, -0.35], n: 3, len: 0.07, stiff: 0.05 + k * 0.004, drag: 0.12, wind: 0.8, cone: 130, sway: 0.15,
-        face: [1, 0, 0], seg: strand });
-    }
+    // Two tied bundles, each with three red fringe cords, below the blade fitting.
+    for (const side of [-1, 1]) for (let k = 0; k < 3; k++) out.push({ joint: 'weapon',
+      anchor: [side * 0.018, 0.01 - k * 0.01, 1.36], rest: [side * 0.18, -1, -0.15],
+      n: 4, len: 0.055, stiff: 0.07, drag: 0.15, wind: 0.65, cone: 118, sway: 0.12, face: [1, 0, 0], seg: strand });
     return out;
   },
 };

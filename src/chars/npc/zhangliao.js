@@ -143,7 +143,8 @@ function head() {
     ...symH(1, 3, 9, 10, 5, 7, C.beard, false), ...symH(3, 5, 10, 11, 5, 7, C.beard, false), ...symH(5, 7, 11, 12, 4, 7, C.beard, false),
     P([0, 9, 5], [1, 11, 6], C.skinD),
     // long straight nose
-    B([0, 4, 6], [1, 10, 7], C.skin), B([-1, 4, 6], [2, 5, 7], C.skin), P([-1, 4, 6], [0, 5, 7], C.skinD), P([1, 4, 6], [2, 5, 7], C.skinD),
+    B([0, 6, 6], [1, 10, 9], C.skinH), B([0, 4, 7], [2, 6, 10], C.skin),
+    P([-1, 5, 6], [0, 8, 8], C.skinD), P([1, 4, 9], [2, 5, 10], C.mouth),
     // short trimmed beard along the jaw, then the thin mouth, the moustache with drooping ends, a pointed goatee, sideburns
     B([-7, 0, -4], [8, 3, 6], beardP, true), B([-2, -3, 2], [3, 0, 6], beardP),
     P([-2, 2, 5], [3, 3, 6], C.lip), P([-1, 2, 5], [2, 3, 6], C.mouth),
@@ -203,13 +204,28 @@ const strand = (cols, v, w0 = 2) => (i, n) => {       // horsehair / silk strand
     return k < 0.25 ? C.plumeM : c;
   })], v, { jitter: 0.06, ao: 0.25 });
 };
-const cape = (i, n) => vox([B([-6, -10, 0], [6, 0, 1], (x, y) => (i === n - 1 && y <= -8 && hash01(x, i, 3) < 0.5 ? null
-  : x === -6 || x === 5 ? C.navyD : md(y + i * 10, 10) === 0 ? C.navyD : md(x * 3 + y, 11) === 0 ? C.navyL : C.navy))],
-  FV, { off: [0, 0, -0.5], jitter: 0.04, ao: 0.18 });
-const sash = (i, n) => vox([B([-2, -8, 0], [2, 0, 1], (x, y) => (i === n - 1 && y <= -7 && x === 1 ? null : x === -2 ? C.navy : i === n - 1 && y <= -6 ? C.slateL : C.slate))],
-  FV, { off: [0, 0, -0.5], jitter: 0.04, ao: 0.15 });
-const ribbon = (i, n) => vox([B([-1, -8, 0], [2, 0, 1], (x, y) => (i === n - 1 && y <= -7 && x === 1 ? null : x === -1 ? C.navyD : C.navyL))],
-  0.011, { off: [0, 0, -0.5], jitter: 0.04, ao: 0.15 });
+// Ribbed outer cape panels, flaring below the belt and split at the last segment's centre.
+const cape = (i, n) => {
+  const boxes = [], width = 6 + Math.round(i * 0.45);
+  for (let row = 0; row < 11; row++) {
+    const w = width + Math.floor(row / 4);
+    for (let x = -w; x <= w; x++) {
+      if (i === n - 1 && row > 8 && Math.abs(x) < 2) continue;
+      const c = Math.abs(x) >= w - 1 ? C.navyD : i === n - 1 && row > 7 ? C.slateL : row % 5 === 0 ? C.navyD : C.navy;
+      boxes.push(B([x, -row - 1, 0], [x + 1, -row, 2], c));
+    }
+  }
+  return vox(boxes, FV, { jitter: 0.025, ao: 0.17 });
+};
+// A folded sash with a travelling diagonal edge and a pointed final tab.
+const ribbon = (i, n) => {
+  const cord = [];
+  for (let y = -8; y < 0; y++) {
+    const q = (i * 8 - y) * 0.33, x = Math.round(Math.sin(q) * 1.2), z = Math.round(Math.cos(q) * 0.8);
+    cord.push(B([x - 1, y, z], [x + 2, y + 1, z + 1], y % 3 === 0 ? C.slateL : C.navyL));
+  }
+  return vox(cord, 0.011, { jitter: 0.02, ao: 0.17 });
+};
 
 export const DEF = {
   scale: 1.1,
@@ -226,15 +242,11 @@ export const DEF = {
     }
     // the cape: three navy panels off the back of the shoulders
     for (const x of [-0.1, 0, 0.1]) {
-      out.push({ joint: 'chest', anchor: [x, 0.23, -0.155], rest: [x * 0.8, -1, -0.18], n: 6, len: 0.12, stiff: 0.14, drag: 0.2, wind: 1.1, cone: 80, sway: 0.18,
+      out.push({ joint: 'chest', anchor: [x, 0.23, -0.155], rest: [x * 0.8, -1, -0.18], n: 6, len: 0.12, stiff: 0.16, drag: 0.22, wind: 1.1, cone: 80, sway: 0.2,
         seg: cape, hit: ['chest', 'hips', 'thighL', 'thighR', 'kneeL', 'kneeR'] });
     }
-    // slate sash tails at the front left of the belt
-    for (const [x, k] of [[0.075, 0], [0.05, 1]]) {
-      out.push({ joint: 'hips', anchor: [x, -0.01, 0.17], rest: [k ? -0.12 : 0.1, -1, 0.15], n: 4, len: 0.08, stiff: 0.08, drag: 0.12, wind: 0.8, face: [0, 0, 1], cone: 80, sway: 0.2,
-        seg: sash, hit: [['thighL', 0.04], ['thighR', 0.04]] });
-    }
-    // two dark blue ribbons under the halberd's collar
+
+    // two dark blue cords under the halberd's collar
     for (const k of [0, 1]) {
       out.push({ joint: 'weapon', anchor: [k ? 0.02 : -0.02, 0.02, 1.43], rest: [k ? 0.3 : -0.3, -1, -0.35], n: 4, len: 0.075, stiff: 0.05, drag: 0.12, wind: 0.9, cone: 130, sway: 0.15,
         face: [1, 0, 0], seg: ribbon });

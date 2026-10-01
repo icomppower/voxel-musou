@@ -49,6 +49,8 @@
 //       fords: [[a0, a1, depth?], …]   walkable crossings along the axis (stepping stones); a negative depth raises a
 //              causeway / bridge deck that far above the plain in the middle of the crossing (no stepping stones; an
 //              earth deck, full height out to hw − 1 across, gone by hw + 3, its sides 4 m ramps: dress a bridge on it)
+//       bedHeight?: (x, z, simHeight) → m   water's rendered bed height for a raised bridge (not an earth causeway);
+//              the map's build() applies the same sampler to its ground mesh; sim walk/deck heights stay unchanged
 //       stones: scattered boulders (default 40; 0 for open water); tint: { deep, shallow, sun: [r, g, b] }
 //
 // ---- render (world.js)

@@ -1,5 +1,5 @@
 // Def-kit adapter: an officer written as data — a model def and a moveset — becomes a full kit (contract: src/chars/
-// index.js) on the shared engine. Zhang Fei (src/chars/zhangfei) is the reference port; Guan Yu, Zhuge Liang, Lü Bu and
+// index.js) on the shared engine. Zhang Fei (src/chars/zhangfei) is the reference kit; Guan Yu, Zhuge Liang, Lü Bu and
 // Liu Bei are built the same way:
 //
 //   export const X_KIT = defKit(def, moveset);      // CHARS.x.kit (src/chars/index.js)
@@ -35,7 +35,7 @@
 //             in string order), chars/loco.js locoClips for the locomotion ones; every move id needs a clip
 //   musou    the Musou script (musou/scripted.js) — its seq / fin clip ids are his move ids
 // }
-import { P, CH, POSE_SIZE } from '../hero/rig.js';
+import { P, CH, POSE_SIZE, HERO_SCALE } from '../hero/rig.js';
 import { prepMoves } from '../hero/moveset.js';
 import { makeAuthor } from '../hero/anims/author.js';
 import { LOCO_CLIPS, runPose, rollPose } from '../hero/anims/locomotion.js';
@@ -65,13 +65,19 @@ export function defKit(def, ms) {
   const M = prepMoves(ms.moves()), own = ms.clips(makeAuthor(M, ms.entry || {}), M);
   for (const id in M) if (!own[id]) console.warn(`defKit: no clip for move ${id}`);
   const run = ms.carry?.run && carried(ms.carry.run), roll = ms.carry?.roll && P(ms.carry.roll);
+  const scale = def.scale || HERO_SCALE;
   const look = { ...ZY_LOOK, dragon: false, ...def.look, pal: { ...ZY_LOOK.pal, ...def.look?.pal } };
   const blade = (def.trail.base + def.trail.tip) / 2, heat = def.heat;
   let e = 0;
   return {
     moves: M, airChainMax: ms.airChainMax ?? 6,
     clips: { ...LOCO_CLIPS, ...own, ...scriptClips(ms.musou) }, feet: {},
-    runPose: run ? (ph, k, out, lean) => run(runPose(ph, k, out, lean)) : runPose,
+    runPose(ph, k, out, lean) {
+      runPose(ph, k, out, lean); run?.(out);
+      // Stride distances come from the sim's metres, before the rig applies the officer's body scale.
+      out[CH.footL + 2] /= scale; out[CH.footR + 2] /= scale;
+      return out;
+    },
     rollPose: roll ? (u, out) => { rollPose(u, out); for (let i = CH.spear; i < CH.spin; i++) out[i] = roll[i]; return out; } : rollPose,
     dashPlant: M.dash.lunge.length > 1 ? M.dash.lunge[1][0] + 4 : -1,
     model: (rig) => buildDef(rig, def.build()),

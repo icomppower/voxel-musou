@@ -65,7 +65,11 @@ export default {
   spawn: { story: { x: 0, z: -121, yaw: 0, tilt: -0.06 }, free: { x: 0, z: -40, yaw: 0 } },
   // the river the lane crosses: deep everywhere but the bridge (a raised deck 1.3 m over the plain)
   water: { along: 'x', c: (x) => RIVER_Z + 7 * Math.sin(x * 0.04) * Math.min(1, (x / 22) ** 2), hw: HW, bed: [1.8, 0.45],
-    fords: [[-4.4, 4.4, -1.3]], y: -0.2, stones: 24, tint: { deep: 0x17201c, shallow: 0x4e4a36, sun: [1, 0.62, 0.32] } },
+    fords: [[-4.4, 4.4, -1.3]], y: -0.2, stones: 24, tint: { deep: 0x17201c, shallow: 0x4e4a36, sun: [1, 0.62, 0.32] },
+    bedHeight(x, z, h) {
+      const wet = 1 - smooth(HW - 1, HW + 3, Math.abs(z - this.c(x)));
+      return Math.abs(x) <= 12 && wet > 0 ? Math.min(h, -this.bed[0] * wet) : h;
+    } },
   // dusk behind 景山, the sun a smoky orange disc low over the hill; brown-amber haze, the far field sinks into smoke
   sky: {
     sunElev: 0.035, sunAz: -0.12, sunCore: [4.4, 2.9, 1.5],
@@ -243,6 +247,13 @@ export default {
 
   // the plank bridge (static deck + the middle span that falls: set 'bridge') and the wall beside the well (set 'well')
   build(root, k) {
+    // The negative ford depth supplies the walk height, not an earth causeway: the wooden deck spans real water.
+    // Keep the sim grid for crossing the bridge, but cut the render mesh back to the riverbed below the planks.
+    const bed = root.getObjectByName('ground').geometry, pos = bed.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      pos.setY(i, this.water.bedHeight(pos.getX(i), pos.getZ(i), pos.getY(i)));
+    }
+    pos.needsUpdate = true; bed.computeVertexNormals(); bed.computeBoundingSphere();
     const mat = lit(), stat = [], y0 = (z) => k.ground(0, z) + 0.1;               // deck top follows the causeway
     const span = [];                                                               // the middle span: 8 falling sections
     const Z0 = RIVER_Z - 9.5, Z1 = RIVER_Z + 9.5, S0 = RIVER_Z - 4.6, S1 = RIVER_Z + 4.6, n = 8;

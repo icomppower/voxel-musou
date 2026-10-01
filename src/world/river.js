@@ -179,7 +179,8 @@ function riverData(stones) {
   const fx = new Float32Array(FW * FH), fz = new Float32Array(FW * FH), dep = new Float32Array(FW * FH);
   for (let j = 0; j < FH; j++) for (let i = 0; i < FW; i++) {
     const x = A0 + (i + 0.5) / pu, z = mid(x) - HW + (j + 0.5) / pv, k = i + j * FW;
-    const d = WATER_Y - (X ? ground(x, z) : ground(z, x)), tx = 1, tz = dc(x), tl = Math.hypot(tx, tz);
+    const [wx, wz] = world(x, z), h = ground(wx, wz);
+    const d = WATER_Y - (WT.bedHeight?.(wx, wz, h) ?? h), tx = 1, tz = dc(x), tl = Math.hypot(tx, tz);
     const sp = (1.6 - 0.9 * smooth(0.3, 0.95, d)) * smooth(0, 0.35, d);
     dep[k] = d; fx[k] = sp * tx / tl; fz[k] = sp * tz / tl;
   }

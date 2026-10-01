@@ -18,6 +18,7 @@ import { Vector3 } from 'three';
 import { on } from '../core/events.js';
 import { ST } from '../crowd/crowd.js';
 import { ACTOR } from '../actors/actors.js';
+import { NPCS } from '../chars/npc/index.js';
 import { ground, zoneAt, GATES, MAP, TERRAIN as G, ROUTE, WATER, walkIn, openWater, waterPoint } from '../world/map.js';
 import { CHARS, paintPortrait } from '../chars/index.js';
 
@@ -162,7 +163,7 @@ export function createHud(root, game, camera) {
     S.dlg = { zh, en, f: game.frame, dur };
     text(dlgN, speaker.zh); text(dlgE, speaker.en.toUpperCase());
     const seal = portrait.seal;
-    if (!seal) paintPortrait(dlgCv, CHARS[portrait]);
+    if (!seal) paintPortrait(dlgCv, CHARS[portrait] || NPCS[portrait]);
     set(dlgCv, 'display', seal ? 'none' : '');
     set(dlgSeal, 'display', seal ? 'block' : 'none'); if (seal) text(dlgSeal, seal);
     dlg.classList.toggle('wei', side === 'wei');
@@ -192,15 +193,18 @@ export function createHud(root, game, camera) {
   // actors lane: hero-model actors — banners in the story band (big for a boss), the boss bar follows the last one struck
   on('actor:spawn', (e) => {
     const { zh, en } = e.name;
-    if (e.role === 'boss') { S.boss = game.actors.get(e.key); S.bossLag = 1; banner(e.intro ? e.intro.zh : `<em>${zh}</em> 出陣`, e.intro ? e.intro.en : `${cap(en)} takes the field!`, 200, true, 2); }
+    if (e.role === 'boss') {
+      S.boss = game.actors.get(e.key); S.bossLag = 1;
+      if (game.mode !== 'story') banner(e.intro ? e.intro.zh : `<em>${zh}</em> 出陣`, e.intro ? e.intro.en : `${cap(en)} takes the field!`, 200, true, 2);
+    }
     else if (e.role === 'ally') banner(`<em>${zh}</em> 參戰`, `${cap(en)} joins the battle`, 150, false, 1);
   });
   on('actor:hit', (e) => { S.boss = game.actors.get(e.key); S.bossF = S.actF = game.frame; });
   on('actor:retreat', (e) => {
     const a = game.actors.get(e.key);
-    if (a && a.isFoe) banner(e.beaten ? `<em>${a.name.zh}</em> 敗走！` : `<em>${a.name.zh}</em> 撤退`, `${cap(a.name.en)} ${e.beaten ? 'is routed!' : 'withdraws'}`, e.beaten ? 220 : 150, e.beaten, e.beaten ? 2 : 1);
+    if (a && a.isFoe && game.mode !== 'story') banner(e.beaten ? `<em>${a.name.zh}</em> 敗走！` : `<em>${a.name.zh}</em> 撤退`, `${cap(a.name.en)} ${e.beaten ? 'is routed!' : 'withdraws'}`, e.beaten ? 220 : 150, e.beaten, e.beaten ? 2 : 1);
   });
-  on('actor:down', (e) => { const a = game.actors.get(e.key); if (a) banner(`敵將 <em>${a.name.zh}</em> 擊破！`, `${cap(a.name.en)} defeated!`, 220, true, 2); });
+  on('actor:down', (e) => { const a = game.actors.get(e.key); if (a && game.mode !== 'story') banner(`敵將 <em>${a.name.zh}</em> 擊破！`, `${cap(a.name.en)} defeated!`, 220, true, 2); });
   addEventListener('keydown', (e) => { if (e.code === 'KeyH') showKeys = !(showKeys ?? true); });
 
   const set = (el, prop, v) => { if (el.style[prop] !== v) el.style[prop] = v; };

@@ -8,7 +8,8 @@
 //      move frame; a dodge / hit out of the move lets it fade undetonated; window 2 detonates it (eight columns of light
 //      on the trigrams, a centre column, rings, a shock wall, rays).
 //      Musou: musou:fx 'bagua' opens the vast one (r 12 m) under him, synced to the Musou frame; 'baguaBurst' (the
-//      finisher) detonates it. Between CONTACT and the finisher light rains at random inside it, and through the whole
+//      finisher) detonates its eight outer columns; the shared Musou view owns the payoff flash. Between CONTACT and
+//      the finisher light rains at random inside it, and through the whole
 //      action the east wind streams past in long faint streaks (east = −X on the maps: +Z is north).
 import * as THREE from 'three';
 import { on } from '../../core/events.js';
@@ -104,14 +105,16 @@ export function createZhugeFx(parent, game) {
       const a = yaw + i * Math.PI / 4, px = x + Math.sin(a) * r * 0.7, pz = z + Math.cos(a) * r * 0.7;
       fx.columns(px, pz, 1, 0, big ? 14 : 7, big ? 1.5 : 1.1, 0.55, GOLD, 0); fx.ring(px, pz, big ? 3 : 1.4, 0.35, BEAM);
     }
-    fx.columns(x, z, 1, 0, big ? 16 : 10, big ? 2 : 1.8, 0.6, BEAM, 0);
+    if (!big) fx.columns(x, z, 1, 0, 10, 1.8, 0.6, BEAM, 0);   // the Musou's centre stays clear of its hero
     fx.ring(x, z, r * 1.4, 0.55, GOLD); fx.ring(x, z, r * 0.8, 0.4, BEAM);
     fx.wall(x, z, r * 1.2, big ? 3.4 : 2.4, 0.5, k3(VIOLET, 0.5));
     fx.rayBurst(x, 0.3, z, big ? 16 : 16, r * 1.2, k3(GOLD, big ? 0.6 : 1), [0.6, 1.2], 0.45, 0.5);
-    fx.star(x, 0.6, z, big ? 3.2 : 2.6, 0.3, CORE);
+    fx.star(x, 0.6, z, big ? 1.2 : 2.6, 0.3, CORE);
     fx.dustRing(x, z, big ? 16 : 24, 0.5, r * (big ? 1.1 : 1.6), 0.6, big ? 0.35 : 0.5);
-    fx.lightFlash(x, 1.2, z, [0.9, 0.8, 1], big ? 45 : 55, 0.4, big ? 20 : 14);
-    fx.flash(big ? 0.08 : 0.14);             // (the Musou's own payoff flashes on the same frame)
+    if (!big) {
+      fx.lightFlash(x, 1.2, z, [0.9, 0.8, 1], 55, 0.4, 14);
+      fx.flash(0.14);
+    }
   };
   on('attack:swing', (e) => {
     const h = game.hero, hit = e.move === 'c6' && h.kit.moves.c6?.hits[e.win];

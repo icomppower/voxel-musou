@@ -61,7 +61,14 @@ export function clips(A, M) {
       [s - 2, { ...OUT, hipsR: [8, 48, 0], chest: [4, 34, 0], spear: [0.14, 1.26, 0.28, 66, 10, 0], armL: [30, 0, 40, 60] }, 'io']];
     for (let f = s; f <= e; f += 3) keys.push([f, { ...OUT, spin: sp(f) }, 'lin']);
     keys.push([e + 10, { ...OUT, spin: 720, spear: [-0.6, 1.2, 0.16, -80, -6, 0] }, 'io'], [F, { ...G, spin: 720 }]);
-    for (let f = s + 2, i = 0; f <= e; f += 4, i++) keys.push(ft(f, i % 2 ? body('whirl', f, sp(f), [0.24, 0.08, 0.26, 0, 15]) : null, i % 2 ? null : body('whirl', f, sp(f), [-0.26, 0.08, -0.22, 0, -35])));
+    for (let f = s; f <= e; f += 3) {
+      const phase = (f - s) * Math.PI / 6;
+      const pivot = (x, offset) => {
+        const q = phase + offset, lift = Math.max(0, Math.sin(q));
+        return body('whirl', f, sp(f), [x, 0.08 + lift * 0.13, 0.2 + Math.cos(q) * 0.1, -20 * lift, x > 0 ? 20 : -22]);
+      };
+      keys.push(ft(f, pivot(0.19, 0), pivot(-0.22, Math.PI)));
+    }
     keys.push(ft(F, [0.17, 0.08, 0.3, 0, 15 + 720], [-0.2, 0.08, -0.26, 0, -30 + 720]));
     out.whirl = clipF('whirl', keys); }
   // leap: crouch, the hilt raised two-handed over his head in the air, the point driven down on landing

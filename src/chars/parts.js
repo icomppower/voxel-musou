@@ -2,60 +2,72 @@
 // = 0.0125 m, half of Zhao Yun's V, and every part is authored CENTRED on its joint (no odd-width offset), +x = the
 // officer's left, +z = forward, limbs hang along −y. Joint extents in FV: hips ≈ [-12,-10,-8]..[12,6,8], spine -6..16,
 // chest -4..21 (shoulders at ±19), neck -2..6, upper arm 2..-24, forearm 0..-22, hand ±4 round the joint, thigh 2..-36,
-// shin 0..-35, foot y -7..2 (the sole sits 0.08 m under the ankle), z -5..15 (toe forward). Colours come from the
+// shin 0..-35, foot y -7..2 (the sole sits 0.08 m under the ankle), z -5..17 (toe forward). Colours come from the
 // officer's palette; boxes are hero/model.js B / P boxes.
-import { B, P, md } from '../hero/model.js';
+import { B, md } from '../hero/model.js';
 
 export const FV = 0.0125;
 
-/** Bare fist round the hand joint: knuckle ridge, finger creases, thumb over the front on the inner side (sx −1 right,
- *  +1 left). */
+/** Closed grip: a narrow palm, four raised finger pads, and a diagonal thumb across their front. */
 export function hand(sx, skin, skinD) {
   return [
-    B([-4, -4, -3], [4, 4, 4], skin),
-    P([-4, -4, 3], [4, 4, 4], (x, y) => (md(y, 2) ? skinD : skin)),    // finger creases on the knuckle face
-    B([-4, 1, -4], [4, 3, -3], skinD),                                  // knuckle ridge on the back of the hand
-    B([sx > 0 ? -5 : 4, -3, 0], [sx > 0 ? -4 : 5, 2, 4], skin),         // thumb, wrapped round the grip (inner side)
+    B([-3, -5, -3], [4, 3, 2], skin),
+    ...[-3, -1, 1, 3].map((x) => B([x, -4, 2], [x + 1, 2, 5], (xx, y) => y < -2 ? skinD : skin)),
+    B([-4, 2, -2], [5, 4, 2], skinD),
+    B([-4, -3, 4], [5, 3, 6], (x, y) => Math.abs(y - sx * x * 0.45) < 1.2 ? skin : null),
   ];
 }
 
 /** Gloved fist: the hand in leather c with a flared cuff. */
 export function glove(sx, c, cuff) {
-  return [...hand(sx, c, cuff), B([-5, 2, -5], [5, 5, 5], cuff)];
+  return [...hand(sx, c, cuff), B([-5, 3, -4], [6, 6, 3], (x, y, z) => Math.abs(x) + Math.abs(z) < 7 ? cuff : null)];
 }
 
 /** Bare, muscled upper arm: round deltoid cap, biceps bulging forward, triceps behind, the groove under the deltoid;
  *  band = [c, dark, light] armlet above the elbow (or null). */
 export function bareArm({ skin, skinD, skinH }, band) {
-  const sk = (x, y, z) => (z > 2 && y < -7 && y > -17 ? skinH : x > 3 || z < -3 ? skinD : skin);
+  const outline = (x, y, z) => {
+    const width = y > -7 ? 5 : y > -17 ? 4 : 3;
+    if (Math.abs(x) + Math.abs(z) > width + 3) return null;
+    if (y > -4 && z > 0) return skinH;
+    return x > 2 || z < -2 ? skinD : skin;
+  };
   return [
-    B([-4, -24, -4], [4, 2, 4], sk),
-    B([-5, -5, -5], [5, 3, 5], sk),                                    // deltoid
-    B([-4, -17, 3], [4, -7, 6], sk),                                   // biceps
-    B([-4, -16, -6], [4, -6, -3], skinD),                              // triceps
-    P([-5, -6, -5], [5, -5, 6], skinD),                                // deltoid groove
-    ...(band ? [B([-5, -21, -5], [5, -17, 5], band[0]), P([-5, -21, -5], [5, -20, 5], band[1]), P([-5, -18, -5], [5, -17, 5], band[2])] : []),
+    B([-5, -25, -5], [6, 3, 6], outline),
+    B([-3, -16, 3], [4, -7, 6], (x, y) => Math.abs(x) < 2 && y > -14 ? skinH : skin),
+    ...(band ? [B([-5, -22, -5], [6, -18, 6], (x, y, z) => {
+      if (Math.abs(x) + Math.abs(z) > 8) return null;
+      return z > 2 && Math.abs(x) < 2 ? band[2] : y === -22 ? band[1] : band[0];
+    })] : []),
   ];
 }
 
 /** Forearm with a bracer over its lower two thirds ([c, dark, light]: banded, a light rim at both ends, an optional ridge). */
 export function bracer(skin, [c, d, l], ridge = true) {
   return [
-    B([-4, -22, -4], [4, 0, 4], skin),
-    B([-5, -20, -5], [5, -4, 5], (x, y, z) => (md(y, 4) === 0 ? d : md(x + z - y, 7) === 0 ? l : c)),
-    B([-6, -20, -6], [6, -18, 6], l), B([-6, -6, -6], [6, -4, 6], l),
-    ...(ridge ? [B([-1, -18, 5], [1, -6, 6], l)] : []),
+    B([-3, -23, -3], [4, 1, 4], skin),
+    ...[-21, -15, -9].map((y, i) => B([-5, y, -5], [6, y + 5, 6], (x, yy, z) => {
+      if (Math.abs(x) + Math.abs(z) > 8) return null;
+      if (yy === y + 4) return l;
+      return z > 2 && md(x + i, 3) === 0 ? d : c;
+    })),
+    ...(ridge ? [B([-2, -19, 5], [3, -8, 7], (x, y) => Math.abs(x) + Math.abs(y + 13) < 6 ? l : null)] : []),
   ];
 }
 
 /** Boot: foot block, toe cap (or a curled toe), a sole plate and an optional trim band round the top. */
 export function boot(c, cd, sole, { curl = false, trim = null } = {}) {
   return [
-    B([-6, -7, -5], [6, 2, 12], c),
-    ...(curl ? [B([-4, -5, 12], [4, 0, 16], c), B([-3, -3, 16], [3, 1, 18], cd), B([-2, 0, 17], [2, 3, 19], cd)]
-      : [B([-5, -7, 12], [5, -1, 15], c), P([-5, -3, 12], [5, -1, 15], cd)]),
-    P([-6, -7, -5], [6, -6, 19], sole),
-    ...(trim ? [P([-6, 1, -5], [6, 2, 12], trim)] : []),
+    B([-6, -7, -5], [7, 4, 17], (x, y, z) => {
+      const toe = z > 8, width = toe ? 5 - Math.floor((z - 8) / 4) : 6;
+      if (Math.abs(x) > width || (z < -2 && Math.abs(x) > 4)) return null;
+      const top = toe ? (curl ? Math.floor((z - 8) / 3) : -1) : z < 3 ? 3 : 1;
+      if (y > top) return null;
+      if (y === -7) return sole;
+      if (trim && y === top && z < 4) return trim;
+      return toe || x === -width ? cd : c;
+    }),
+    B([-3, -7, -5], [4, -3, -2], sole),
   ];
 }
 

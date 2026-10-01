@@ -57,6 +57,8 @@ const NAG = { who: 'lusu', zh: '將軍且慢！東風未起，七星壇不可有
 const NAG_BANK = { who: 'zhouyu', zh: '莫要孤軍深入！先與黃蓋在江岸會合。', en: 'Don\'t press on alone! Join Huang Gai at the landing first.' };
 const NAG_GATE = { who: 'huanggai', zh: '水寨門緊閉！先斬守門的毛玠、于禁！', en: 'The water camp gate is barred! Cut down Mao Jie and Yu Jin who hold it!' };
 const NAG_WOOD = { who: 'zhouyu', zh: '烏林尚有曹仁、徐晃，不可輕進！', en: 'Cao Ren and Xu Huang still hold Wulin. Don\'t push on yet!' };
+// The altar anchor lies inside its solid base. Guard its walkable south stair, within reach of a close-range sweep.
+const ALTAR_GUARD = ['altar', 0, -15];
 
 // Pacing (default difficulty): a scripted bot that attacks nonstop clears in ≈ 7.5 min with ≈ 3000 KOs (altar 2 min
 // fixed by the wind's timer · the pursuers and the landing 70 s · the fire and the gate 90 s · camp and 烏林 80 s ·
@@ -65,8 +67,8 @@ export const BEATS = [
   // ---- 南屏山 七星壇: hold the altar until the third watch, when the wind turns
   {
     when: { wait: 30 },
-    obj: { zh: '守護七星壇 直至東風起', en: 'Guard the Altar of the Seven Stars until the east wind rises', go: ['altar', 0, 0], timer: 120 },
-    defend: { key: 'altar', at: ['altar', 0, 0], r: 12, hp: 600, name: { zh: '七星壇', en: 'Seven Stars Altar' } },
+    obj: { zh: '守護七星壇 直至東風起', en: 'Guard the Altar of the Seven Stars until the east wind rises', go: ALTAR_GUARD, timer: 120 },
+    defend: { key: 'altar', at: ALTAR_GUARD, r: 6, hp: 600, name: { zh: '七星壇', en: 'Seven Stars Altar' } },
     fail: { when: { hp: ['altar', 0.001] }, zh: '七星壇失守，東風未至……', en: 'The altar has fallen — and the east wind never came.' },
     limit: { z: ['altar', 0, 13], nag: NAG },
     squads: [{ at: ['altar', 22, 2], n: 14 }, { at: ['altar', -24, -4], n: 14 }],
@@ -89,7 +91,7 @@ export const BEATS = [
     skip: { timer: true },
     officers: { caihe: { at: ['altar', 20, 8], engaged: true } },
     squads: [{ at: ['altar', 18, 11], n: 12, charge: true }],
-    obj: { zh: '擊破細作 蔡和', en: 'Cut down the spy, Cai He', go: 'caihe' },
+    obj: { zh: '擊破細作 蔡和', en: 'Cut down the spy, Cai He', go: 'caihe', keepTimer: true },
     say: [
       { who: 'caihe', zh: '奉丞相密令，毀此妖壇！', en: 'By the Chancellor\'s secret order — tear down this witch\'s altar!' },
       { who: 'hero', zhugeliang: ['蔡和？汝之詐降，周郎早已看破。', 'Cai He? Zhou Yu saw through your false surrender long ago.'],
@@ -100,7 +102,7 @@ export const BEATS = [
     when: { down: 'caihe' },
     skip: { timer: true },
     banner: { html: '細作 <em>蔡和</em> 討取！', en: 'The spy Cai He is cut down', dur: 150 },
-    obj: { zh: '守護七星壇 直至東風起', en: 'Guard the Altar of the Seven Stars until the east wind rises', go: ['altar', 0, 0] },
+    obj: { zh: '守護七星壇 直至東風起', en: 'Guard the Altar of the Seven Stars until the east wind rises', go: ALTAR_GUARD, keepTimer: true },
     heal: 0.25, morale: 0.1, hush: true,
     say: [{ who: 'lusu', zh: '好！壇前已穩。只是這風……', en: 'Well fought! The altar holds. But the wind...' }],
   },
@@ -113,7 +115,7 @@ export const BEATS = [
     limit: { z: ['beach', 0, -0.62], nag: NAG_BANK },
     say: [
       { who: 'lusu', zh: '風……風向轉了！真是東南風！', en: 'The wind... the wind has turned! It truly blows from the south-east!' },
-      { who: 'hero', zhugeliang: ['東風已起，破敵正在今日。', 'The east wind has risen. Today we break them.'],
+      { who: 'hero', zhugeliang: ['江面風勢已轉，讓黃老將軍依計發船。', 'The gusts favor our course. Send Huang Gai the signal and put the plan in motion.'],
         zhaoyun: ['軍師真乃神人也！', 'The Strategist commands heaven itself!'] },
       { who: 'zhouyu', zh: '此人有奪天地造化之法……留之必為東吳之患。丁奉、徐盛，去南屏山！', en: 'This man bends heaven and earth to his will... Leave him alive and he will ruin Wu. Ding Feng, Xu Sheng — to the altar!' },
       { who: 'ally', zhugeliang: ['軍師，周都督的兵馬往壇上來了！船已在江邊，速走！', 'Strategist, Zhou Yu\'s men are coming up the hill! My boat waits at the river — quickly!'],

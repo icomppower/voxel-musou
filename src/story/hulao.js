@@ -230,7 +230,7 @@ export const BEATS = [
       { who: 'lubu', zh: '何人敢擋我呂奉先！', en: 'Who dares stand before Lü Fengxian!' },
       { who: 'hero', liubei: ['呂布驍勇無雙，不可輕敵……', 'Lü Bu has no equal. We cannot take him lightly...'],
         guanyu: ['呂布，關某來會你！', 'Lü Bu. Guan Yu will face you!'],
-        zhangfei: ['三姓家奴休走！燕人張飛在此！', 'Stand, you slave of three fathers! Zhang Fei of Yan is here!'] },
+        zhangfei: ['呂奉先，莫把天下英雄都看小了！俺這桿矛可不答應！', 'Fengxian, you have judged every man here too lightly. My spear will correct you!'] },
     ],
   },
   {

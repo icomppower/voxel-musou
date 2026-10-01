@@ -146,7 +146,8 @@ function head() {
     ...symH(1, 3, 10, 12, 5, 8, C.beard, false), ...symH(3, 5, 11, 13, 5, 8, C.beard, false), ...symH(5, 8, 12, 14, 5, 7, C.beard, false),
     P([0, 10, 5], [1, 13, 6], C.skinD),                                            // furrow
     // flat broad nose
-    B([-1, 4, 6], [2, 9, 7], C.skin), B([-2, 4, 6], [3, 6, 7], C.skin), P([-2, 4, 6], [-1, 5, 7], C.skinD), P([2, 4, 6], [3, 5, 7], C.skinD),
+    B([-2, 6, 6], [3, 10, 8], C.skin), B([-3, 4, 6], [4, 6, 9], C.skinH),
+    B([0, 3, 7], [1, 5, 9], C.skinD), P([-3, 4, 8], [-1, 5, 9], C.mouth), P([2, 4, 8], [4, 5, 9], C.mouth),
     // snarl: dark mouth, upper teeth, lower lip
     P([-3, 1, 5], [4, 4, 6], C.mouth), P([-2, 3, 5], [3, 4, 6], C.teeth), P([-3, 1, 5], [4, 2, 6], C.lip),
     // upswept moustache; the beard mass round the jaw (the long spikes and whiskers are chains); sideburns
@@ -221,9 +222,6 @@ const tail = (i, n) => {                                      // the tiger tail:
   return vox([B([-w, -7, -w], [w, 0, w], (x, y) => (last ? (y < -4 ? C.stripe : C.tiger) : md(y + i * 2, 5) < 2 ? C.stripe : y === -1 ? C.tigerL : C.tiger))],
     FV, { jitter: 0.05, ao: 0.25 });
 };
-const sash = (i, n) => vox([B([-2, -8, 0], [2, 0, 1], (x, y) => (i === n - 1 && y <= -7 && x === 1 ? null : x === -2 ? C.redD : C.red))],
-  FV, { off: [0, 0, -0.5], jitter: 0.04, ao: 0.15 });
-
 export const ZHANGFEI_DEF = {
   build: () => ({ parts: limbs(torso()), head: head(), bv: FV, hv: HV, pauldron, weapon: weaponGeo() }),
   chains() {
@@ -241,13 +239,10 @@ export const ZHANGFEI_DEF = {
       out.push({ joint: 'head', anchor: [x * HV, y * HV, z * HV], rest: [rx, cheek ? -0.35 : -1, rz], n: 2, len: cheek ? 0.05 : 0.06,
         stiff: 0.4, drag: 0.22, wind: 0.2, grav: 1.4, cone: 40, face: [0, 0, 1], seg: spike, hit: cheek ? [] : [['chest', 0.02]] });
     }
-    // tiger tail from the back of the belt; red sash tails at the front right
+    // tiger tail from the back of the belt
     out.push({ joint: 'hips', anchor: [0.02, -0.02, -0.15], rest: [0.05, -1, -0.3], n: 6, len: 0.085, stiff: 0.1, drag: 0.12, wind: 0.9, cone: 85, sway: 0.2, grav: 1.1,
       face: [0, 0, -1], seg: tail, hit: ['hips', ['thighL', 0.03], ['thighR', 0.03], ['kneeL', 0.03], ['kneeR', 0.03]] });
-    for (const [x, k] of [[-0.075, 0], [-0.05, 1]]) {
-      out.push({ joint: 'hips', anchor: [x, -0.01, 0.17], rest: [k ? 0.12 : -0.1, -1, 0.15], n: 4, len: 0.08, stiff: 0.08, drag: 0.12, wind: 0.8, face: [0, 0, 1], cone: 80, sway: 0.2,
-        seg: sash, hit: [['thighL', 0.04], ['thighR', 0.04]] });
-    }
+
     // the spear's red tassel under the serpent head
     for (let k = 0; k < 5; k++) {
       const a = k * 1.2566, ox = Math.cos(a) * 0.016, oy = Math.sin(a) * 0.016;
@@ -284,4 +279,3 @@ export const FACE = [
 ];
 export const PAL = { r: '#e0482c', R: '#b02a1c', I: '#34363e', i: '#55586a', Y: '#c8a04a', G: '#b48a3c', H: '#0d0a0b', K: '#0d0a0b',
   S: '#8e5c3e', s: '#66402a', W: '#f2eadc', E: '#0a0808', M: '#4c1c16', T: '#ece2cc' };
-

@@ -222,14 +222,20 @@ const beardSeg = (i, n) => {                                 // a lock of the lo
   const w = Math.max(1, 2 - (i >> 1)), last = i === n - 1;
   return vox([B([-w, -5, -1], [w, 0, 1], (x, y, z) => (last && y < -3 && hash01(x, y, 3) < 0.5 ? null : beardP(x, y, z)))], HV, { jitter: 0.05, ao: 0.25 });
 };
-const cape = (i, n) => vox([B([-6, -11, 0], [6, 0, 1], (x, y) => {   // crimson cape panel: dark border, a gold hem at the end
-  const last = i === n - 1;
-  if (last && y <= -10 && md(x, 3) === 0) return null;
-  return last && y <= -8 ? C.gold : x === -6 || x === 5 ? C.redD : md(y + x, 7) === 0 ? C.redL : C.red;
-})], FV, { off: [0, 0, -0.5], jitter: 0.04, ao: 0.15 });
-const sash = (i, n) => vox([B([-2, -8, 0], [2, 0, 1], (x, y) => (i === n - 1 && y <= -7 && x === 1 ? null : x === -2 ? C.redD : C.red))],
-  FV, { off: [0, 0, -0.5], jitter: 0.04, ao: 0.15 });
-
+// Ribbed outer cape panels, flaring below the belt and split at the last segment's centre.
+const cape = (i, n) => {
+  const boxes = [], width = 6 + Math.round(i * 0.45);
+  for (let row = 0; row < 11; row++) {
+    const w = width + Math.floor(row / 4);
+    for (let x = -w; x <= w; x++) {
+      if (i === n - 1 && row > 8 && Math.abs(x) < 2) continue;
+      const c = Math.abs(x) >= w - 1 ? C.redD : i === n - 1 && row > 7 ? C.gold : row % 5 === 0 ? C.redD : C.red;
+      boxes.push(B([x, -row - 1, 0], [x + 1, -row, 2], c));
+    }
+  }
+  return vox(boxes, FV, { jitter: 0.025, ao: 0.17 });
+};
+// A folded sash with a travelling diagonal edge and a pointed final tab.
 export const DEF = {
   scale: 1.12,
   reach: { tip: 2.26, butt: 0.88 },
@@ -252,11 +258,7 @@ export const DEF = {
       out.push({ joint: 'chest', anchor: [x, 0.25, -0.16], rest: [x * 0.8, -1, -0.12], n: 6, len: 0.14, stiff: 0.16, drag: 0.22, wind: 1.1, cone: 80, sway: 0.2,
         seg: cape, hit: ['chest', 'hips', 'thighL', 'thighR', 'kneeL', 'kneeR'] });
     }
-    // sash tails at the front left
-    for (const [x, k] of [[0.075, 0], [0.1, 1]]) {
-      out.push({ joint: 'hips', anchor: [x, -0.01, 0.17], rest: [k ? 0.12 : -0.05, -1, 0.15], n: 4, len: 0.08, stiff: 0.08, drag: 0.12, wind: 0.8, face: [0, 0, 1], cone: 80, sway: 0.2,
-        seg: sash, hit: [['thighL', 0.04], ['thighR', 0.04]] });
-    }
+
     // the great blade's crimson tassel under the collar
     for (let k = 0; k < 4; k++) {
       const a = k * 1.5708, ox = Math.cos(a) * 0.016, oy = Math.sin(a) * 0.016;

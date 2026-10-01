@@ -130,7 +130,8 @@ function head() {
     ...symH(1, 5, 8, 9, 5, 6, C.skinD), ...symH(4, 6, 8, 9, 5, 6, C.eye),
     ...symH(1, 4, 10, 11, 5, 7, C.hair, false), ...symH(4, 6, 11, 12, 5, 7, C.hair, false),
     // straight thin nose; a thin mouth
-    B([0, 4, 6], [1, 9, 7], C.skin), B([-1, 4, 6], [2, 5, 7], C.skin), P([-1, 4, 6], [0, 5, 7], C.skinD), P([1, 4, 6], [2, 5, 7], C.skinD),
+    B([0, 6, 6], [2, 9, 8], C.skinH), B([1, 4, 7], [2, 7, 10], C.skin),
+    P([0, 5, 7], [1, 7, 8], C.skinD), P([1, 4, 9], [2, 5, 10], C.mouth),
     P([-2, 2, 5], [3, 3, 6], C.lip), P([-1, 2, 5], [2, 3, 6], C.mouth),
     // thin moustache curling up at the tips; the goatee under the lip (its point is a chain)
     B([-3, 3, 6], [4, 4, 7], C.hair), B([-5, 2, 5], [-3, 3, 7], C.hair), B([4, 2, 5], [6, 3, 7], C.hair),

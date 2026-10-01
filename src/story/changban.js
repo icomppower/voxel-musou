@@ -64,9 +64,9 @@ const south = (z) => ({ near: [['bridge', 0, z + 128 - 1000], 1000] });
 const DECK = ['bridge', 0, 8];                  // the north foot of the bridge (z -120)
 const CAO = ['cao', 0, 0];
 const CAOCAO = { kit: 'caocao', role: 'npc', at: CAO, yaw: Math.PI, name: { zh: '曹操', en: 'CAO CAO' }, seal: '曹' };
-// the defend point sits at the bridge's SOUTH foot: the hero fights on the deck / north foot, and only soldiers who get
-// past him drain it (on the deck itself his own ring would drain it — a hero standing his ground lost the bridge in 40 s)
-const BRIDGE = { key: 'bridge', at: ['bridge', 0, -9], r: 5, name: { zh: '長坂橋', en: 'Changban Bridge' } };
+// Enemies converge on the hero instead of marching past him: defend the actual north bridgehead. At normal difficulty
+// (seed 1, hero invulnerable), an idle guard loses it in 27 s; Zhang Fei's N1→N3→C4 guard keeps 92% through the 150 s hold.
+const BRIDGE = { key: 'bridge', at: DECK, r: 5, name: { zh: '長坂橋', en: 'Changban Bridge' } };
 const NAG_ZY = { who: 'hero', zh: '主母與小主人尚在陣中，豈可回頭！', en: 'Our lady and the young lord are still out there. I can\'t turn back now!' };
 const NAG_ZY_FWD = { who: 'hero', zh: '先救眼前之人，再往前去！', en: 'Save the ones in front of me first, then ride on!' };
 const NAG_HOME = { who: 'hero', zhaoyun: ['阿斗在懷，當速回長坂橋！', 'I have A Dou. Back to the bridge, now!'],
@@ -202,8 +202,8 @@ export const BEATS = [
   {
     hero: ZY, when: { down: 'zhanghe' },
     heal: 0.25, morale: 0.1, hush: true,
-    officers: { zhongjin: { at: ['bridge', -0.25, 0.95], engaged: true }, zhongshen: { at: ['bridge', 0.25, 0.95], engaged: true } },
-    squads: [{ at: ['bridge', -0.4, 1.2], n: 18 }, { at: ['bridge', 0.4, 1.3], n: 18 }, { at: ['slopes', 0, 0.3], n: 20, charge: true }],
+    officers: { zhongjin: { at: ['bridge', -10, 27], engaged: true }, zhongshen: { at: ['bridge', 10, 27], engaged: true } },
+    squads: [{ at: ['bridge', -16, 31], n: 18 }, { at: ['bridge', 16, 33], n: 18 }, { at: ['slopes', 0, 0.3], n: 20, charge: true }],
     obj: { zh: '擊破鍾縉、鍾紳', en: 'Defeat Zhong Jin and Zhong Shen', go: 'zhongjin' },
     limit: { z: ['well', 0, 10], back: ['bridge', 0, 18], nag: NAG_HOME },   // the brothers bar the bridge foot
     say: [
@@ -227,12 +227,12 @@ export const BEATS = [
   // ---- the bridge: 張飛's roar
   {
     hero: ZY, when: { near: [DECK, 14] },
-    banner: { html: '燕人張飛在此！<em>誰敢來決一死戰？</em>', en: '"Zhang Fei of Yan is here! Who dares fight me to the death?"', dur: 240, big: true },
+    banner: { html: '長坂橋頭<em>一聲斷喝</em> — 追兵止步', en: 'A thunderous challenge checks the pursuit at Changban Bridge', dur: 240, big: true },
     waves: false, morale: 0.3, hush: true,
     actor: { key: 'zhangfei', do: 'hold', at: ['bridge', 0, 12] },
     say: [
       { who: 'ally', zh: '子龍快走！追兵有俺！', en: 'Go, Zilong! Leave the pursuit to me!' },
-      { who: 'ally', zh: '燕人張翼德在此！誰敢與我決一死戰？！', en: 'Zhang Yide of Yan is here! Who will fight me to the death?!' },
+      { who: 'ally', zh: '俺把蛇矛橫在這裡，看哪個敢踏上橋板！', en: 'My spear bars these planks. Send forward the man willing to cross its point!' },
       { who: 'soldier', zh: '夏侯傑……夏侯傑將軍嚇得肝膽碎裂，墜馬死了！', en: 'General Xiahou Jie... the roar split his gall — he fell from his horse, dead!' },
     ],
   },
@@ -251,7 +251,7 @@ export const BEATS = [
     defend: { ...BRIDGE, hp: 600 },
     fail: { when: { hp: ['bridge', 0.01] }, zh: '長坂橋 失守……', en: 'Changban Bridge has fallen...' },
     obj: { zh: '據守長坂橋', en: 'Hold Changban Bridge', go: DECK, timer: 150 },
-    squads: [{ at: ['bridge', -0.3, 1.3], n: 18 }, { at: ['bridge', 0.35, 1.5], n: 18 }, { at: ['slopes', -0.2, -0.82], n: 20 }],
+    squads: [{ at: ['bridge', -12, 33], n: 18 }, { at: ['bridge', 14, 36], n: 18 }, { at: ['slopes', -0.2, -0.82], n: 20 }],
     limit: { z: ['slopes', 0, -0.75], back: ['bridge', 0, -6], nag: NAG_ZF },
     morale: -0.1,
     say: [
@@ -263,7 +263,7 @@ export const BEATS = [
   {
     hero: ZF, when: [{ kos: 40 }, { wait: 20 * 60 }],
     waves: true,
-    squads: [{ at: ['bridge', 0, 1.4], n: 20, charge: true }],
+    squads: [{ at: ['bridge', 0, 34], n: 20, charge: true }],
     say: [
       { who: 'soldier', zh: '橋南林中塵頭大起……莫非有伏兵？', en: 'Look at the dust in the woods past the bridge... is there an ambush?' },
       { who: 'soldier', zh: '怕甚麼！橋上只有一個人！', en: 'What of it? There\'s only one man on that bridge!' },
@@ -271,8 +271,8 @@ export const BEATS = [
   },
   {
     hero: ZF, when: { wait: 45 * 60 },
-    officers: { caochun: { at: ['bridge', 0, 1.2], engaged: true } },
-    squads: [{ at: ['bridge', -0.4, 1.1], n: 16, charge: true }, { at: ['bridge', 0.4, 1.2], n: 16, charge: true }],
+    officers: { caochun: { at: ['bridge', 0, 31], engaged: true } },
+    squads: [{ at: ['bridge', -16, 30], n: 16, charge: true }, { at: ['bridge', 16, 31], n: 16, charge: true }],
     say: [
       { who: 'caochun', zh: '虎豹騎曹純在此！張飛，讓開道路！', en: 'Cao Chun of the Tiger and Leopard Riders! Out of the way, Zhang Fei!' },
       { who: 'hero', zh: '虎豹騎？俺看是豺狗騎！來！', en: 'Tigers and leopards? Jackals, more like! Come on!' },
@@ -335,8 +335,8 @@ export const BEATS = [
     defend: { ...BRIDGE, hp: 500 },
     fail: { when: { hp: ['bridge', 0.01] }, zh: '長坂橋 失守……', en: 'Changban Bridge has fallen...' },
     heal: 0.3, waves: true,
-    officers: { caohong: { at: ['bridge', -0.35, 1.3], engaged: true }, xuchu: { at: ['bridge', 0.35, 1.4], engaged: true } },
-    squads: [{ at: ['bridge', -0.5, 1.2], n: 18, charge: true }, { at: ['bridge', 0.5, 1.3], n: 18, charge: true }, { at: ['slopes', 0, -0.8], n: 20, charge: true }],
+    officers: { caohong: { at: ['bridge', -14, 33], engaged: true }, xuchu: { at: ['bridge', 14, 34], engaged: true } },
+    squads: [{ at: ['bridge', -20, 31], n: 18, charge: true }, { at: ['bridge', 20, 33], n: 18, charge: true }, { at: ['slopes', 0, -0.8], n: 20, charge: true }],
     obj: { zh: '獨守長坂橋 擊破曹洪、許褚', en: 'Hold the bridge alone — defeat Cao Hong and Xu Chu', go: 'xuchu' },
     limit: { z: ['bridge', 0, 20], back: ['bridge', 0, -6], nag: NAG_ZF },
     say: [
@@ -348,13 +348,13 @@ export const BEATS = [
   },
   {
     hero: ZF, when: [{ down: 'caohong' }, { down: 'xuchu' }, { wait: 50 * 60 }],
-    banner: { html: '燕人張飛在此！<em>誰敢來決一死戰？</em>', en: '"Zhang Fei of Yan is here! Who dares fight me to the death?"', dur: 260, big: true },
+    banner: { html: '張飛橫矛<em>立斷橋頭</em> — 曹軍膽落', en: 'Zhang Fei holds the crossing; the pursuit loses its nerve', dur: 260, big: true },
     morale: 0.25, waves: false, heal: 0.2,
-    officers: { xiahoujie: { at: ['bridge', 0, 1.1], engaged: true } },
+    officers: { xiahoujie: { at: ['bridge', 0, 30], engaged: true } },
     obj: { zh: '擊破夏侯傑', en: 'Defeat Xiahou Jie', go: 'xiahoujie' },
     say: [
-      { who: 'hero', zh: '燕人張翼德在此！誰敢與我決一死戰？！', en: 'Zhang Yide of Yan is here! Who will fight me to the death?!' },
-      { who: 'hero', zh: '戰又不戰，退又不退，卻是何故！', en: 'You won\'t fight and you won\'t run — what are you waiting for?!' },
+      { who: 'hero', zh: '俺替兄長守住這條退路！哪個不怕死，便踩上這座橋！', en: 'This road stays open for my brother. Step onto my bridge if your life means so little!' },
+      { who: 'hero', zh: '喊殺聲倒是不小，怎麼一個個只敢站在岸上？', en: 'An army of loud voices, yet every pair of feet stays ashore!' },
       { who: 'caocao', zh: '……這一聲，如巨雷一般。', en: '...That voice. Like a thunderclap.' },
       { who: 'xiahoujie', zh: '啊……啊啊……！', en: 'Ah... ahh...!' },
     ],
