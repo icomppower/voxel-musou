@@ -11,6 +11,9 @@
 //            zone: id   hero reached that zone (z ≥ its near edge: the field runs along +Z, see world/map.js)
 //            at: P      hero reached the z of a position P         down: key   that officer was KO'd
 //            below: [key, f]   that officer's HP fraction < f (true once he is KO'd, too)
+//            held: true   the armed calm hold was kept (see `calm`)   broke: true   the hero struck while it was armed
+//            hero: id     the chosen officer is `id`                reach: [P | escort key, r]   hero within r m of it
+//            clear: r     no standing Wei soldier within r m of the hero        safe: [key, P]   that escort reached P's z
 //   skip   trigger: when it holds as the beat comes up, the beat is dropped (a line that no longer makes sense)
 //   say    dialogue lines, queued (one at a time, each held ~4-5 s like DW8)
 //   obj    new objective { zh, en, go: officer key | P } (go = where the HUD objective arrow points)
@@ -21,6 +24,15 @@
 //   heal f (fraction of max HP; DW's 肉包 on a stage clear)   morale ±d   retire (free idle grunts far behind)
 //   gate   open a map gate: 'pass' | 'weiCamp' | 'summit' (world/map.js GATES; all closed at a story start)
 //   win    the chapter's victory beat (slow-mo, then the result screen)
+//   escort { key, at: P, name {zh, en}, hp }   a named Shu ally (holds rank until the hero passes, then keeps pace with
+//          him); if he falls the chapter is lost. `go: key` points the objective arrow at him; saved: key ends the escort
+//   allies [{ x, z, n, cols?, hold? }]   Shu blocks (metres; hold: in rank until the hero passes)   retire: true | P
+//          (idle blocks 45 m behind the hero, or south of P's z, leave the field)
+//   volley { at: P, r, frac }   crossbows from the walls: a blow-away volley on that share of the Wei soldiers within r of P
+//   calm   { at: P, r = 5, frames, obj?: {zh, en} }   arm a hold without attacking: the hero must stand within r m of P
+//          and not strike (swing, shot or Musou; the first 1.5 s are grace, a combo under way finishes) for `frames`
+//          sim frames in a row; leaving the circle restarts the count,
+//          a strike breaks it (`broke`), success sets `held`; obj: the objective line, re-sent each second + countdown
 // A position P = [zone id, fx, fz]: fractions of the zone's half width / half depth (radius) from its centre, so the
 // script follows the map lane's zone table instead of hard geometry; ['gate', dx, dz] = metres from the camp gate.
 // Line = { who, zh, en } or { who, huangzhong: [zh, en], zhaoyun: [zh, en] } (branch on the hero).

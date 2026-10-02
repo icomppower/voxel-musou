@@ -20,7 +20,7 @@ const LIGHT_DIR = new THREE.Vector3(0.5, 0.58, 0.64).normalize();   // as Dingju
 const SHADOW_BOX = 34;
 const RIVER_X = 16;                  // east of this, off the walkable ground, is the Yangtze (map.js)
 const FACE = { x: -39, z0: -2, z1: 28, top: 44 };   // the inscription face: flat, x = -39, z -2 … 28 (the 'foot' piece below it)
-const NF = 16;                       // fires reflected in the water (nearest the focus)
+export const NF = 16;                // fires reflected in the water (nearest the focus)
 
 // ---------------------------------------------------------------- textures
 /** 赤壁 cut into the rock and filled with red: two big brush glyphs, top to bottom, on a transparent card. */
@@ -60,7 +60,9 @@ function sailTexture(burnt, seed) {
 }
 
 // ---------------------------------------------------------------- the Yangtze
-const WATER_VS = /* glsl */`
+/** River water (漢水 reuses it: hanshui.js): silty body, sky/haze reflection, the low sun's glitter path, fire
+ *  reflections (uFire), foam along the waterline from a depth grid (tDepth over uGrid). */
+export const WATER_VS = /* glsl */`
   varying vec3 vWp;
   #include <fog_pars_vertex>
   void main() {
@@ -70,7 +72,7 @@ const WATER_VS = /* glsl */`
     gl_Position = projectionMatrix * mvPosition;
     #include <fog_vertex>
   }`;
-const WATER_FS = /* glsl */`
+export const WATER_FS = /* glsl */`
   uniform float uTime; uniform vec3 uSun, uSunCol, uSkyUp, uDeep; uniform vec4 uFire[${NF}]; uniform sampler2D tDepth; uniform vec4 uGrid;
   varying vec3 vWp;
   ${NOISE_GLSL}

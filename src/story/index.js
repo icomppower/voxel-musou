@@ -23,6 +23,7 @@ import { emit, on } from '../core/events.js';
 import { zone, setGate, GATES, WALL_Z, GATE_X, mapId } from '../world/map.js';
 import { CHARS } from '../chars/index.js';
 import { chapter } from './chapters.js';
+import { ST } from '../crowd/crowd.js';
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
@@ -51,6 +52,9 @@ export function createStory(game) {
   on('hero:down', () => { if (S.mode === 'story' && S.won < 0) S.downT = S.t; });
   on('hero:hurt', (e) => { S.dmg += e.dmg; });
   on('ko', (e) => { if (e.officer && S.off) for (const k in S.off) if (S.off[k] === e.i) { S.dead[k] = true; S.off[k] = -1; } });
+  // the hero struck this step (a swing / shot or a Musou; drawing the bow is a stance): the calm hold reads it
+  on('attack:start', (e) => { if (e.move !== 'aim') S.atk = true; });
+  on('musou:start', () => { S.atk = true; });
 
   // ---- dialogue: one line at a time; lines resolve the speaker (hero / ally / SPK seal) and branch on the hero
   const say = (line) => {
@@ -64,6 +68,12 @@ export function createStory(game) {
 
   // ---- triggers (every key of an object must hold; an array = any one of its objects)
   const officerFrac = (k) => { const i = S.off[k]; return S.dead[k] ? 0 : i >= 0 ? game.crowd.hp[i] / game.crowd.hpMax[i] : 1; };
+  /** A standing Wei soldier or officer within r m of the hero. */
+  const weiNear = (r) => {
+    const c = game.crowd, h = game.hero;
+    for (let i = 0; i < c.N; i++) { const s = c.st[i]; if (s !== ST.OFF && s !== ST.DEAD && (c.x[i] - h.x) ** 2 + (c.z[i] - h.z) ** 2 < r * r) return true; }
+    return false;
+  };
   const holds = (w) => {
     if (!w) return true;
     if (Array.isArray(w)) return w.some(holds);
@@ -74,13 +84,23 @@ export function createStory(game) {
     if (w.at && h.z < pos(w.at)[1]) return false;
     if (w.down && !S.dead[w.down]) return false;
     if (w.below && officerFrac(w.below[0]) >= w.below[1]) return false;
+    if (w.hero && S.char !== w.hero) return false;
+    if (w.reach) {                                                     // P, or an escort's key (his position)
+      const t = w.reach[0], i = typeof t === 'string' ? S.esc[t] : -1, [x, z] = i >= 0 ? [game.crowd.x[i], game.crowd.z[i]] : typeof t === 'string' ? [1e9, 1e9] : pos(t);
+      if (Math.hypot(h.x - x, h.z - z) > w.reach[1]) return false;
+    }
+    if (w.clear != null && weiNear(w.clear)) return false;
+    if (w.safe) { const i = S.esc[w.safe[0]]; if (i === undefined || game.crowd.z[i] < pos(w.safe[1])[1]) return false; }
+    if (w.held && !S.held) return false;
+    if (w.broke && !S.broke) return false;
     return true;
   };
 
   function fire(b) {
     const c = game.crowd, h = game.hero;
     if (b.win) { S.won = S.t; S.q.length = 0; S.sayUntil = 0; }       // victory: drop pending chatter, its line goes out first
-    if (b.retire) c.retire(h.z - 45);                                  // stage change: idle blocks far behind give their slots back
+    if (b.retire) c.retire(b.retire === true ? h.z - 45 : pos(b.retire)[1]);   // stage change: idle blocks far behind (or south of P) leave
+    for (const a of b.allies || []) c.spawnAllies(a);                   // Shu blocks { x, z, n, cols, hold } (metres)
     for (const q of b.squads || []) { const [x, z] = pos(q.at); c.spawnSquad({ x, z, n: q.n, cols: q.cols, charge: !!q.charge }); }
     for (const k in b.officers || {}) {                                // spawned on the next steps (retried while slots are full)
       const o = b.officers[k], d = S.ch.OFF[o.like || k];
@@ -93,6 +113,26 @@ export function createStory(game) {
     if (b.heal && !h.dead) h.hp = Math.min(h.hpMax, h.hp + b.heal * game.diff.heal * h.hpMax);
     if (b.morale != null) S.mBase = b.morale === 1 ? 1 : S.mBase + b.morale;
     if (b.gate) setGate(b.gate, true);
+    if (b.escort) {                                                    // one named Shu ally the hero must bring out alive
+      const e = b.escort, [x, z] = pos(e.at);
+      let i = -1;
+      for (let k = c.N; k < c.T; k++) if (c.st[k] === ST.OFF) { i = k; break; }  // spawnAllies fills the lowest free ally slot
+      if (i >= 0) {
+        c.spawnAllies({ x, z, n: 1, cols: 1, hold: true });
+        c.hp[i] = c.hpMax[i] = e.hp ?? 300;
+        S.esc[e.key] = i; S.off[e.key] = i; S.escName = e.name;
+      }
+    }
+    if (b.saved) delete S.esc[b.saved];
+    if (b.volley) {                                                    // crossbows from the walls: a blow-away volley on the Wei ranks
+      const v = b.volley, [x, z] = pos(v.at), key = 900000 + S.beat;
+      for (let i = 0; i < c.grunts; i++) {
+        const s = c.st[i];
+        if (s === ST.OFF || s === ST.DEAD || (c.x[i] - x) ** 2 + (c.z[i] - z) ** 2 > v.r * v.r || ((i * 7) % 10) / 10 >= v.frac) continue;
+        game.combat.hitOne(i, { dmg: 999, kb: 'blow', force: 9, lift: 4, heavy: true }, x, z - 20, 0, key, false, 'musou');
+      }
+    }
+    if (b.calm) { const [x, z] = pos(b.calm.at); S.calm = { x, z, r: b.calm.r ?? 5, frames: b.calm.frames, obj: b.calm.obj, t0: S.t }; S.calmT = 0; S.held = S.broke = false; }
     if (b.banner) emit('story:banner', { dur: 150, ...b.banner });
     if (b.hush) S.q.length = 0;                                        // stage cleared: queued taunts are stale now
     if (b.obj) { emit('story:objective', { zh: b.obj.zh, en: b.obj.en }); S.go = b.obj.go; }
@@ -102,7 +142,7 @@ export function createStory(game) {
   st.reset = ({ mode = 'free', char = 'zhaoyun' } = {}) => {
     Object.assign(S, { mode, char, ally: char === 'huangzhong' ? 'zhaoyun' : 'huangzhong', t: 0, done: false, maxChain: 0,
       downT: -1, dmg: 0, beat: 0, beatT: 0, koBase: 0, off: {}, want: {}, dead: {}, q: [], sayUntil: 0, limit: Infinity, nag: null,
-      nagT: -999, mBase: 0.4, won: -1, go: null, ch: chapter(mapId()) });
+      nagT: -999, mBase: 0.4, won: -1, go: null, ch: chapter(mapId()), esc: {}, escName: null, atk: false, calm: null, calmT: 0, held: false, broke: false });
     game.timeScale = 1;
     st.target = null;
     if (mode === 'story') for (const id in GATES) setGate(id, false);   // spawnPoint() opened them all; the script opens each
@@ -128,7 +168,23 @@ export function createStory(game) {
       h.iframes = Math.max(h.iframes, 2);
       if (k >= 300) S.end(true);
     } else if (S.downT >= 0) { if (S.t - S.downT >= 120) S.end(false); return; }     // 2 s on the ground, then defeat
+    // an escort falls: his cry, 2 s, then defeat
+    for (const k in S.esc) if (S.won < 0 && S.downT < 0 && c.st[S.esc[k]] === ST.DEAD) {
+      S.downT = S.t; delete S.esc[k];
+      emit('story:banner', { html: `<em>${S.escName?.zh ?? ''}</em> 陣亡`, en: `${S.escName?.en ?? ''} has fallen`, dur: 150, big: true });
+    }
 
+    // calm hold (a beat's `calm`): stand within r of the spot, don't strike, for `frames` in a row. Stepping out of the
+    // circle restarts the count; a strike (or a Musou) after the first 1.5 s breaks it for good. The objective counts the seconds down.
+    if (S.calm) {
+      const C = S.calm;
+      if (S.atk && S.t - C.t0 > 90) { S.broke = true; S.calm = null; }       // 1.5 s grace: a combo already under way finishes
+      else if (Math.hypot(h.x - C.x, h.z - C.z) <= C.r) {
+        if (++S.calmT >= C.frames) { S.held = true; S.calm = null; }
+        else if (C.obj && S.calmT % 60 === 1) emit('story:objective', { zh: `${C.obj.zh} ${Math.ceil((C.frames - S.calmT) / 60)}`, en: `${C.obj.en} ${Math.ceil((C.frames - S.calmT) / 60)}s` });
+      } else S.calmT = 0;
+    }
+    S.atk = false;
     const BEATS = S.ch.BEATS;
     while (S.beat < BEATS.length) {
       const b = BEATS[S.beat];

@@ -34,6 +34,7 @@ const ITEMS = [
   { go: 'story', zh: '第一章「定軍山」', en: 'Story · Chapter I, Mount Dingjun' },
   { go: 'free', zh: '自由演武', en: 'Free battle · endless waves' },
   { go: 'story', map: 'chibi', zh: '第二章「赤壁」', en: 'Story · Chapter II, Red Cliffs' },   // story/ch2.js
+  { go: 'story', map: 'hanshui', zh: '第四章「漢水」', en: 'Story · Chapter IV, Han River' },   // story/ch4.js
   { go: 'controls', zh: '操作說明', en: 'Controls' },
 ];
 // free-battle battlefields (map.js layouts), in menu order: the card's line under the name
