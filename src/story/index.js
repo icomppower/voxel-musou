@@ -24,6 +24,10 @@
 // Also owns game.timeScale (wall-clock pace of the fixed-step loop, main.js): 1, except the victory slow-mo, and the
 // hero's buff multipliers h.atkK (damage dealt, combat.js applyHit) / h.defK (damage taken ÷, hero.hurt): 1 unless a
 // `buff` beat runs. Free mode = the endless field: the army, reinforcement waves, the hero's intro line, and no end.
+// Escort / stratagem beats (漢水): `escort` fields one named Shu soldier the hero must keep alive (his fall loses the
+// battle until a `saved` beat releases him); `calm` arms a hold-still test (stand within r of a spot without striking:
+// `held` once it lasts, `broke` if he strikes after a 1.5 s grace); `volley` blows away a share of the foe grunts round
+// a point (crossbows from the walls).
 // Allies (crowd.spawnAllies; columns via crowd.setAllies): a stage's CH.van holds rank until the hero marches past;
 // omitted (or free mode) = a block behind him, [] = alone. Morale also moves with the duels (foe grunts the
 // allies KO'd minus allies lost).
@@ -67,6 +71,9 @@ export function createStory(game) {
   on('hero:down', () => { if (S.mode !== 'free' && S.won < 0 && S.downT < 0) { S.downT = S.t; S.final = st.stats(); } });
   on('hero:hurt', (e) => { S.dmg += e.dmg; });
   on('ko', (e) => { if (e.officer && S.off) for (const k in S.off) if (S.off[k] === e.i) { S.dead[k] = true; S.off[k] = -1; } });
+  // the hero struck this step (a swing / shot or a Musou; drawing the bow is a stance): the calm hold reads it
+  on('attack:start', (e) => { if (e.move !== 'aim') S.atk = true; });
+  on('musou:start', () => { S.atk = true; });
   const gone = (e) => { if (S.dead) S.dead[e.key] = true; };   // an actor KO'd or withdrawn: `down` for the script
   on('actor:down', gone); on('actor:retreat', gone);
 
@@ -93,6 +100,14 @@ export function createStory(game) {
     const a = k in S.off ? null : game.actors?.get(k);
     return a ? (a.dead || S.dead[k] ? 0 : a.hp / a.hpMax) : officerFrac(k);
   };
+  /** A foe grunt or officer on his feet within r m of the hero. */
+  const foeNear = (r) => {
+    const c = game.crowd, h = game.hero;
+    for (let i = 0; i < c.N; i++) { const s = c.st[i]; if (s !== ST.OFF && s !== ST.DEAD && (c.x[i] - h.x) ** 2 + (c.z[i] - h.z) ** 2 < r * r) return true; }
+    return false;
+  };
+  /** World [x, z] of a `near` target: an escort's key (where he stands now) or a position P. */
+  const at = (t) => (typeof t === 'string' ? (S.esc[t] >= 0 ? [game.crowd.x[S.esc[t]], game.crowd.z[S.esc[t]]] : [1e9, 1e9]) : pos(t));
   const holds = (w) => {
     if (!w) return true;
     if (Array.isArray(w)) return w.some(holds);
@@ -101,19 +116,24 @@ export function createStory(game) {
     if (w.kos != null && h.kos - S.koBase < w.kos) return false;
     if (w.zone && h.z < nearZ(w.zone)) return false;
     if (w.at && h.z < pos(w.at)[1]) return false;
-    if (w.near) { const [x, z] = pos(w.near[0]); if (Math.hypot(h.x - x, h.z - z) > w.near[1]) return false; }
+    if (w.near) { const [x, z] = at(w.near[0]); if (Math.hypot(h.x - x, h.z - z) > w.near[1]) return false; }
     if (w.down && !S.dead[w.down] && !game.actors?.get(w.down)?.dead) return false;
     if (w.below && frac(w.below[0]) >= w.below[1]) return false;
     if (w.hp && frac(w.hp[0]) >= w.hp[1]) return false;
     if (w.timer && !(S.timerEnd >= 0 && S.t >= S.timerEnd)) return false;
     if (w.hero && !w.hero.includes(S.char)) return false;
+    if (w.clear != null && foeNear(w.clear)) return false;
+    if (w.safe) { const i = S.esc[w.safe[0]]; if (i === undefined || game.crowd.z[i] < pos(w.safe[1])[1]) return false; }
+    if (w.held && !S.held) return false;
+    if (w.broke && !S.broke) return false;
     return true;
   };
 
   function fire(b) {
     const c = game.crowd, h = game.hero;
     if (b.win) { S.won = S.t; S.final = st.stats(); S.q.length = 0; S.sayUntil = 0; } // victory: freeze stats and drop chatter
-    if (b.retire) c.retire(h.z - 45);                                  // stage change: idle blocks far behind give their slots back
+    if (b.retire) c.retire(b.retire === true ? h.z - 45 : pos(b.retire)[1]);   // stage change: idle blocks far behind (or south of P) leave
+    for (const a of b.allies || []) c.spawnAllies(a);                  // Shu blocks { x, z, n, cols, hold } (metres)
     for (const q of b.squads || []) { const [x, z] = pos(q.at); c.spawnSquad({ x, z, n: q.n, cols: q.cols, charge: !!q.charge }); }
     for (const k in b.officers || {}) {                                // spawned on the next steps (retried while slots are full)
       const o = b.officers[k], d = C.OFF[o.like || k];
@@ -132,6 +152,20 @@ export function createStory(game) {
     if (b.heal && !h.dead) h.hp = Math.min(h.hpMax, h.hp + b.heal * game.diff.heal * h.hpMax);
     if (b.morale != null) S.mBase = b.morale === 1 ? 1 : S.mBase + b.morale;
     if (b.gate) setGate(b.gate, true);
+    if (b.escort) {                                                    // one named Shu soldier the hero must bring out alive
+      const e = b.escort, [x, z] = pos(e.at), i = c.spawnAllies({ x, z, n: 1, cols: 1, hold: true })?.[0] ?? -1;
+      if (i >= 0) { c.hp[i] = c.hpMax[i] = e.hp ?? 300; S.esc[e.key] = i; S.off[e.key] = i; S.escName = e.name; }
+    }
+    if (b.saved) delete S.esc[b.saved];
+    if (b.volley) {                                                    // crossbows from the walls: a blow-away volley on the foe ranks
+      const v = b.volley, [x, z] = pos(v.at), key = 900000 + S.beat;
+      for (let i = 0; i < c.grunts; i++) {
+        const s = c.st[i];
+        if (s === ST.OFF || s === ST.DEAD || (c.x[i] - x) ** 2 + (c.z[i] - z) ** 2 > v.r * v.r || ((i * 7) % 10) / 10 >= v.frac) continue;
+        game.combat.hitOne(i, { dmg: 999, kb: 'blow', force: 9, lift: 4, heavy: true }, x, z - 20, 0, key, false, 'musou');
+      }
+    }
+    if (b.calm) { const [x, z] = pos(b.calm.at); S.calm = { x, z, r: b.calm.r ?? 5, frames: b.calm.frames, obj: b.calm.obj, t0: S.t }; S.calmT = 0; S.held = S.broke = false; }
     if (b.banner) emit('story:banner', { dur: 150, ...b.banner });
     if (b.hush) S.q.length = 0;                                        // stage cleared: queued taunts are stale now
     if (b.obj) {
@@ -152,7 +186,8 @@ export function createStory(game) {
     C = mode === 'free' ? null : chapter(ch);
     Object.assign(S, { mode, char, ally: C?.CH.ally?.[char], t: 0, done: false, maxChain: 0,
       downT: -1, final: null, dmg: 0, beat: 0, beatT: 0, koBase: 0, off: {}, want: {}, dead: {}, q: [], sayUntil: 0, limit: Infinity, back: -Infinity,
-      nag: null, nagT: -999, mBase: 0.4, won: -1, go: null, timerEnd: -1, fail: null, reason: null, def: null, buffEnd: Infinity });
+      nag: null, nagT: -999, mBase: 0.4, won: -1, go: null, timerEnd: -1, fail: null, reason: null, def: null, buffEnd: Infinity,
+      esc: {}, escName: null, atk: false, calm: null, calmT: 0, held: false, broke: false });
     const c = game.crowd, h = game.hero;
     game.timeScale = 1;
     h.atkK = h.defK = 1;
@@ -186,6 +221,24 @@ export function createStory(game) {
       emit('story:banner', { html: S.reason.zh, en: S.reason.en, dur: 150, big: true });
       return;
     }
+
+    // an escort falls: his cry, 2 s, then defeat
+    for (const k in S.esc) if (S.won < 0 && S.downT < 0 && c.st[S.esc[k]] === ST.DEAD) {
+      S.reason = { zh: `${S.escName?.zh ?? ''} 陣亡`, en: `${S.escName?.en ?? ''} has fallen` };
+      S.downT = S.t; S.final = st.stats(); delete S.esc[k];
+      emit('story:banner', { html: `<em>${S.escName?.zh ?? ''}</em> 陣亡`, en: S.reason.en, dur: 150, big: true });
+    }
+    // calm hold (a beat's `calm`): stand within r of the spot, don't strike, for `frames` in a row. Stepping out of the
+    // circle restarts the count; a strike (or a Musou) after the first 1.5 s breaks it for good. The objective counts down.
+    if (S.calm) {
+      const K = S.calm;
+      if (S.atk && S.t - K.t0 > 90) { S.broke = true; S.calm = null; }       // 1.5 s grace: a combo already under way finishes
+      else if (Math.hypot(h.x - K.x, h.z - K.z) <= K.r) {
+        if (++S.calmT >= K.frames) { S.held = true; S.calm = null; }
+        else if (K.obj && S.calmT % 60 === 1) emit('story:objective', { zh: `${K.obj.zh} ${Math.ceil((K.frames - S.calmT) / 60)}`, en: `${K.obj.en} ${Math.ceil((K.frames - S.calmT) / 60)}s` });
+      } else S.calmT = 0;
+    }
+    S.atk = false;
 
     const BEATS = C.BEATS;
     while (S.beat < BEATS.length) {

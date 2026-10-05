@@ -85,10 +85,17 @@ if (process.argv.includes('--defense') || process.argv.includes('--altar')) {
 function fixture(ch, char, options = {}) {
   world.loadMap(MAPS[ch]);
   const hero = { ...world.spawnPoint('story'), hp: 400, hpMax: 400, kos: 0, combo: 0, vz: 0, iframes: 0, dead: false };
-  const actors = new Map(), officers = [], seen = { objectives: [], banners: [], lines: [], sets: [], actors: [], end: null };
+  const actors = new Map(), officers = [], escorts = [], seen = { objectives: [], banners: [], lines: [], sets: [], actors: [], end: null };
   const game = { hero, frame: 0, diff: difficulty.DIFFS[1], timeScale: 1 };
   game.crowd = { N: 0, x: [], z: [], st: [], hp: [], hpMax: [], allyKos: 0, allyLost: 0,
-    spawnAllies() {}, setAllies() {}, spawnArmy() {}, setWaves() {}, retire() {}, spawnSquad() {},
+    // a single soldier is an escort (漢水's 張著): a slot past the officers that keeps pace with the hero (step)
+    spawnAllies({ x, z, n }) {
+      if (n !== 1) return [];
+      const i = 1000 + escorts.length;
+      escorts.push(i); this.x[i] = x; this.z[i] = z; this.hp[i] = this.hpMax[i] = 1;
+      return [i];
+    },
+    setAllies() {}, spawnArmy() {}, setWaves() {}, retire() {}, spawnSquad() {},
     spawnOfficer(d) {
       const i = officers.length;
       officers.push({ ...d, born: game.frame, down: false });
@@ -116,19 +123,20 @@ function fixture(ch, char, options = {}) {
   });
   game.story = story;
   story.reset({ mode: 'story', char, ch });
-  return { game, story, seen, actors, officers, off, options };
+  return { game, story, seen, actors, officers, escorts, off, options };
 }
 
 function step(f, steer = true, kill = true) {
-  const { game, story, actors, officers, options } = f, h = game.hero, c = game.crowd;
+  const { game, story, actors, officers, escorts, options } = f, h = game.hero, c = game.crowd;
   game.frame++;
   if (steer && story.target) {
     // Script positions may be set directly here: browser acceptance owns traversal and physical reachability.
     const p = story.target, goal = `${p.x},${p.z}`;
     h.x = p.x;
     if (goal !== f.goal) { f.goal = goal; f.direction = Math.sign(p.z - h.z) || 1; h.z = p.z; }
-    else h.z += f.direction * 2;
+    else if (!f.seen.objectives.at(-1)?.zh.includes('按兵不動')) h.z += f.direction * 2;   // a hold-still beat: stand on the spot
   }
+  for (const i of escorts) { c.x[i] = h.x + 8; c.z[i] = h.z; }
   if (kill) {
     for (let i = 0; i < officers.length; i++) {
       const o = officers[i], wait = options.coldWine && o.name.en === 'HUA XIONG' ? 151 * 60 : 120;
@@ -165,6 +173,11 @@ for (const C of CHAPTERS) for (const char of C.CH.heroes) {
   }
   if (C.CH.id === 'chibi') assert.deepEqual(s.sets, ['wind', 'ignite', 'forest']);
   if (C.CH.id === 'dingjun') assert(s.actors.some((a) => a.kit === 'xiahouyuan' && a.role === 'boss'));
+  if (C.CH.id === 'hanshui') {
+    assert(s.banners.some((b) => b.includes('張著')), 'Zhang Zhu must be brought out');
+    assert(s.banners.some((b) => b.includes('空營計</em> 成')), 'standing still at the gate must hold the ruse');
+    assert(s.actors.some((a) => a.kit !== char && a.role === 'ally'), 'the other officer must join');
+  }
   console.log(`PASS ${C.CH.id}/${char} win and branch events`);
 }
 const cold = run('hulao', 'guanyu', { coldWine: true });
@@ -220,7 +233,8 @@ console.log('PASS bridge enemy spawn units');
 const saved = new Map();
 globalThis.localStorage = { getItem: (key) => saved.get(key), setItem: (key, value) => saved.set(key, value) };
 assert(chapterOpen(0));
-for (let i = 0; i < CHAPTERS.length - 1; i++) {
+const DJ = CHAPTERS.findIndex((c) => c.CH.id === 'dingjun');      // clears up to (not including) 定軍山: the Gauntlet stays shut
+for (let i = 0; i < DJ; i++) {
   assert.equal(chapterOpen(i + 1), false);
   progress.record(CHAPTERS[i].CH.id, CHAPTERS[i].CH.heroes[0], 'normal', { rank: 'A', time: 600, kos: 900 });
   assert(chapterOpen(i + 1));
@@ -229,6 +243,7 @@ assert(!difficulty.unlocked(difficulty.DIFFS[3]) && progress.locked('gauntlet') 
 const win = progress.record('dingjun', 'huangzhong', 'hard', { rank: 'S', time: 500, kos: 1300 });
 assert.deepEqual(win.unlocks.map((u) => u.id), ['chaos', 'gauntlet']);
 assert(win.first && difficulty.unlocked(difficulty.DIFFS[3]));
+assert(DJ + 1 >= CHAPTERS.length || chapterOpen(DJ + 1), 'clearing 定軍山 opens the chapter after it');
 // each best is kept on its own: a slower, lower-ranked run with more KOs only moves the KO record
 const again = progress.record('dingjun', 'huangzhong', 'hard', { rank: 'B', time: 700, kos: 1500 });
 assert.deepEqual(again.fresh, { rank: false, time: false, kos: true });

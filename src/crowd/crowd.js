@@ -214,11 +214,13 @@ export function createCrowd(game, grunts) {
    *  fall in with him at once. */
   c.spawnAllies = ({ x, z, n, face = 0, cols = 4, hold = false }) => {
     const sn = Math.sin(face), cs = Math.cos(face);
-    freeSlots(false, true).slice(0, n).forEach((i, k) => {
+    const slots = freeSlots(false, true).slice(0, n);
+    slots.forEach((i, k) => {
       const lx = (k % cols - (cols - 1) / 2) * 1.25 + rng.range(-0.12, 0.12), lz = -Math.floor(k / cols) * 1.45 + rng.range(-0.12, 0.12);
       place(i, x + lx * cs + lz * sn, z - lx * sn + lz * cs, !hold, k % 9 === 0 ? KIND.BEARER : rng.chance(0.35) ? KIND.SWORD : KIND.SPEAR);
       c.yaw[i] = face; c.form[i] = hold ? 1 : 0; c.band[i] = 1;
     });
+    return slots;                                                     // the slots filled (story: an escort's index)
   };
   /** Ally reinforcement columns on/off (they run up the road while the allies are under strength, see allyColumns()). */
   c.setAllies = (on) => { c.alliesOn = !!on; };

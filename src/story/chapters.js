@@ -92,10 +92,11 @@ import * as hulao from './hulao.js';
 import * as changban from './changban.js';
 import * as chibi from './chibi.js';
 import * as dingjun from './dingjun.js';
+import * as hanshui from './hanshui.js';
 import { TRIALS } from './trials.js';
 import { cleared } from '../core/progress.js';
 
-export const CHAPTERS = [hulao, changban, chibi, dingjun];
+export const CHAPTERS = [hulao, changban, chibi, dingjun, hanshui];
 /** Chapter or trial module by id (unknown / missing id = the first chapter). */
 export const chapter = (id) => CHAPTERS.find((m) => m.CH.id === id) || TRIALS.find((m) => m.CH.id === id) || CHAPTERS[0];
 /** Chapter i (index into CHAPTERS) is playable: the first always, the others once the one before is cleared. */
