@@ -65,7 +65,14 @@ export function createAudio(game) {
   useVoice();
   on('scenario', useVoice);
 
+  // Sound is optional: if the device refuses the graph (no audio output, a blocked context, an odd sample rate) the game
+  // runs silent — every player checks ctx — instead of the throw aborting the page at boot.
+  let dead = false;
   function start() {
+    if (dead) return;
+    try { build(); } catch (e) { dead = true; ctx = null; console.warn('audio disabled', e); }
+  }
+  function build() {
     if (ctx) { if (ctx.state !== 'running') ctx.resume(); return; }
     ctx = new AudioContext({ latencyHint: 'interactive' });
     const comp = ctx.createDynamicsCompressor();
@@ -91,7 +98,7 @@ export function createAudio(game) {
     sides = SIDE.map(() => ctx.createGain());
     underBus = ctx.createGain(); underBus.connect(sides[0]).connect(sfx);
     vox = ctx.createGain(); vox.gain.value = VOX; vox.connect(sides[2]).connect(mix);
-    const rev = ctx.createConvolver(); rev.buffer = makeIR();
+    const rev = ctx.createConvolver(); rev.buffer = makeIR(ctx.sampleRate);
     revIn = ctx.createGain(); revIn.connect(rev); rev.connect(sides[3]).connect(mix);   // the wash ducks under hits too
     bedDuck = ctx.createGain(); bedDuck.connect(mix);
     bedBus = ctx.createGain(); bedBus.connect(sides[1]).connect(bedDuck);

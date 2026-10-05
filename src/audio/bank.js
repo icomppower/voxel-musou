@@ -18,16 +18,18 @@ export function noiseBuf() {
   return NOISE;
 }
 
-/** Stereo reverb impulse for the runtime convolver: 1.5 s of decaying noise that darkens over time. */
-export function makeIR() {
-  const sec = 1.5, decay = 3.4, n = Math.floor(sec * SR), b = new AudioBuffer({ length: n, sampleRate: SR, numberOfChannels: 2 });
+/** Stereo reverb impulse for the runtime convolver: 1.5 s of decaying noise that darkens over time. sr: the context's
+ *  rate — a ConvolverNode rejects a buffer at any other rate (a 44.1 kHz output device threw at boot and the page never
+ *  loaded). */
+export function makeIR(sr = SR) {
+  const sec = 1.5, decay = 3.4, n = Math.floor(sec * sr), b = new AudioBuffer({ length: n, sampleRate: sr, numberOfChannels: 2 });
   for (let c = 0; c < 2; c++) {
     const d = b.getChannelData(c);
     let lp = 0;
     for (let i = 0; i < n; i++) {
       const u = i / n, a = 0.75 - 0.6 * u;                 // one-pole lowpass closing over the tail
       lp += a * ((Math.random() * 2 - 1) - lp);
-      d[i] = lp * Math.exp(-decay * u * sec) * (i < SR * 0.012 ? i / (SR * 0.012) : 1);
+      d[i] = lp * Math.exp(-decay * u * sec) * (i < sr * 0.012 ? i / (sr * 0.012) : 1);
     }
   }
   return b;
